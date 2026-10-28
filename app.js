@@ -1,29 +1,40 @@
 /* =========================================================
    RESONA — APPLICATION CORE
+   Version 1.1.0
    Global music discovery and streaming frontend
    ========================================================= */
 
 "use strict";
 
 /* =========================================================
-   1. APPLICATION CONFIGURATION
+   1. CONFIGURATION
    ========================================================= */
 
 const Resona = {
-  version: "1.0.0",
+  version: "1.1.0",
 
   config: {
-    // Configure these when the backend is ready.
+    // Leave empty until the real Resona API is available.
+    // Example: https://api.example.com
     apiBase: "",
+
+    // Never populate the catalogue with fictional music.
     enableDemoData: false,
-    enableAudioPlayback: false
+
+    // Playback requires a legitimate, authorised audio source.
+    enableAudioPlayback: true,
+
+    // Maximum time to wait for a catalogue response.
+    requestTimeout: 12000
   },
 
   state: {
     currentPage: "home",
+
     currentTrack: null,
     currentAudio: null,
     isPlaying: false,
+
     isShuffle: false,
     repeatMode: "off",
 
@@ -31,9 +42,13 @@ const Resona = {
     queueIndex: -1,
 
     searchQuery: "",
+    searchType: "all",
+
     selectedMood: null,
     selectedContinent: null,
     selectedCountry: null,
+
+    libraryTab: "liked",
 
     library: {
       likedTracks: [],
@@ -52,7 +67,8 @@ const Resona = {
     audioProgress: 0,
     audioDuration: 0,
 
-    audioObjectUrl: null
+    isLoadingCatalogue: false,
+    catalogueError: null
   }
 };
 
@@ -64,11 +80,13 @@ const Resona = {
 const ResonaStorage = {
   get(key, fallback = null) {
     try {
-      const value = localStorage.getItem("resona_" + key);
+      const raw = localStorage.getItem("resona_" + key);
 
-      return value === null
-        ? fallback
-        : JSON.parse(value);
+      if (raw === null) {
+        return fallback;
+      }
+
+      return JSON.parse(raw);
     } catch (error) {
       console.warn("Resona storage read failed:", error);
       return fallback;
@@ -100,7 +118,7 @@ const ResonaStorage = {
 
 
 /* =========================================================
-   3. GLOBAL MUSIC DISCOVERY
+   3. CONTINENTS AND COUNTRIES
    ========================================================= */
 
 const RESONA_CONTINENTS = [
@@ -110,21 +128,20 @@ const RESONA_CONTINENTS = [
     symbol: "🌍",
     description: "Discover African sounds",
     countries: [
-      "Nigeria",
-      "Ghana",
-      "South Africa",
-      "Kenya",
-      "Egypt",
-      "Tanzania",
-      "Uganda",
-      "Morocco",
-      "Ethiopia",
-      "Senegal",
-      "Cameroon",
-      "Algeria",
-      "Angola",
-      "Rwanda",
-      "Zimbabwe"
+      "Algeria", "Angola", "Benin", "Botswana",
+      "Burkina Faso", "Burundi", "Cabo Verde",
+      "Cameroon", "Central African Republic", "Chad",
+      "Comoros", "Democratic Republic of the Congo",
+      "Republic of the Congo", "Côte d'Ivoire", "Djibouti",
+      "Egypt", "Equatorial Guinea", "Eritrea", "Eswatini",
+      "Ethiopia", "Gabon", "Gambia", "Ghana", "Guinea",
+      "Guinea-Bissau", "Kenya", "Lesotho", "Liberia",
+      "Libya", "Madagascar", "Malawi", "Mali", "Mauritania",
+      "Mauritius", "Morocco", "Mozambique", "Namibia",
+      "Niger", "Nigeria", "Rwanda", "São Tomé and Príncipe",
+      "Senegal", "Seychelles", "Sierra Leone", "Somalia",
+      "South Africa", "South Sudan", "Sudan", "Tanzania",
+      "Togo", "Tunisia", "Uganda", "Zambia", "Zimbabwe"
     ]
   },
 
@@ -134,21 +151,18 @@ const RESONA_CONTINENTS = [
     symbol: "🌍",
     description: "Explore European music",
     countries: [
-      "United Kingdom",
-      "France",
-      "Germany",
-      "Spain",
-      "Italy",
-      "Portugal",
-      "Netherlands",
-      "Sweden",
-      "Norway",
-      "Poland",
-      "Ireland",
-      "Greece",
-      "Switzerland",
-      "Belgium",
-      "Austria"
+      "Albania", "Andorra", "Austria", "Belarus",
+      "Belgium", "Bosnia and Herzegovina", "Bulgaria",
+      "Croatia", "Cyprus", "Czechia", "Denmark",
+      "Estonia", "Finland", "France", "Germany",
+      "Greece", "Hungary", "Iceland", "Ireland",
+      "Italy", "Latvia", "Liechtenstein", "Lithuania",
+      "Luxembourg", "Malta", "Moldova", "Monaco",
+      "Montenegro", "Netherlands", "North Macedonia",
+      "Norway", "Poland", "Portugal", "Romania",
+      "Russia", "San Marino", "Serbia", "Slovakia",
+      "Slovenia", "Spain", "Sweden", "Switzerland",
+      "Ukraine", "United Kingdom", "Vatican City"
     ]
   },
 
@@ -156,23 +170,20 @@ const RESONA_CONTINENTS = [
     id: "asia",
     name: "Asia",
     symbol: "🌏",
-    description: "Explore Asian sounds",
+    description: "Explore music from Asia",
     countries: [
-      "Japan",
-      "South Korea",
-      "India",
-      "China",
-      "Indonesia",
-      "Philippines",
-      "Thailand",
-      "Pakistan",
-      "Bangladesh",
-      "Vietnam",
-      "Malaysia",
-      "Singapore",
-      "Saudi Arabia",
-      "United Arab Emirates",
-      "Turkey"
+      "Afghanistan", "Armenia", "Azerbaijan", "Bahrain",
+      "Bangladesh", "Bhutan", "Brunei", "Cambodia",
+      "China", "Georgia", "India", "Indonesia", "Iran",
+      "Iraq", "Israel", "Japan", "Jordan", "Kazakhstan",
+      "Kuwait", "Kyrgyzstan", "Laos", "Lebanon",
+      "Malaysia", "Maldives", "Mongolia", "Myanmar",
+      "Nepal", "North Korea", "Oman", "Pakistan",
+      "Palestine", "Philippines", "Qatar", "Saudi Arabia",
+      "Singapore", "South Korea", "Sri Lanka", "Syria",
+      "Taiwan", "Tajikistan", "Thailand", "Timor-Leste",
+      "Turkey", "Turkmenistan", "United Arab Emirates",
+      "Uzbekistan", "Vietnam", "Yemen"
     ]
   },
 
@@ -182,16 +193,14 @@ const RESONA_CONTINENTS = [
     symbol: "🌎",
     description: "Discover North American music",
     countries: [
-      "United States",
-      "Canada",
-      "Mexico",
-      "Cuba",
-      "Jamaica",
-      "Dominican Republic",
-      "Haiti",
-      "Costa Rica",
-      "Panama",
-      "Guatemala"
+      "Antigua and Barbuda", "Bahamas", "Barbados",
+      "Belize", "Canada", "Costa Rica", "Cuba",
+      "Dominica", "Dominican Republic", "El Salvador",
+      "Grenada", "Guatemala", "Haiti", "Honduras",
+      "Jamaica", "Mexico", "Nicaragua", "Panama",
+      "Saint Kitts and Nevis", "Saint Lucia",
+      "Saint Vincent and the Grenadines",
+      "Trinidad and Tobago", "United States"
     ]
   },
 
@@ -201,16 +210,9 @@ const RESONA_CONTINENTS = [
     symbol: "🌎",
     description: "Discover South American music",
     countries: [
-      "Brazil",
-      "Argentina",
-      "Colombia",
-      "Chile",
-      "Peru",
-      "Venezuela",
-      "Ecuador",
-      "Uruguay",
-      "Paraguay",
-      "Bolivia"
+      "Argentina", "Bolivia", "Brazil", "Chile",
+      "Colombia", "Ecuador", "Guyana", "Paraguay",
+      "Peru", "Suriname", "Uruguay", "Venezuela"
     ]
   },
 
@@ -220,20 +222,26 @@ const RESONA_CONTINENTS = [
     symbol: "🌏",
     description: "Explore music from Oceania",
     countries: [
-      "Australia",
-      "New Zealand",
-      "Fiji",
-      "Papua New Guinea",
-      "Samoa",
-      "Tonga",
-      "Vanuatu"
+      "Australia", "Fiji", "Kiribati", "Marshall Islands",
+      "Micronesia", "Nauru", "New Zealand", "Palau",
+      "Papua New Guinea", "Samoa", "Solomon Islands",
+      "Tonga", "Tuvalu", "Vanuatu"
     ]
   }
 ];
 
+const RESONA_MOODS = [
+  { id: "calm", name: "Calm", symbol: "☁" },
+  { id: "energetic", name: "Energetic", symbol: "⚡" },
+  { id: "melancholy", name: "Melancholy", symbol: "☾" },
+  { id: "focus", name: "Focus", symbol: "◉" },
+  { id: "party", name: "Party", symbol: "✦" },
+  { id: "night", name: "Night", symbol: "☽" }
+];
+
 
 /* =========================================================
-   4. HELPERS
+   4. UTILITIES
    ========================================================= */
 
 const ResonaUtils = {
@@ -268,60 +276,98 @@ const ResonaUtils = {
     }
   },
 
+  validHttpUrl(value) {
+    if (!value) return "";
+
+    try {
+      const url = new URL(String(value), location.href);
+
+      if (
+        url.protocol !== "https:" &&
+        url.protocol !== "http:"
+      ) {
+        return "";
+      }
+
+      return url.href;
+    } catch {
+      return "";
+    }
+  },
+
+  formatTime(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) {
+      return "0:00";
+    }
+
+    const total = Math.floor(seconds);
+    const minutes = Math.floor(total / 60);
+    const remaining = total % 60;
+
+    return minutes + ":" + String(remaining).padStart(2, "0");
+  },
+
   showMessage(message, type = "info") {
-    let toast = this.element("resonaToast");
+    let toast = this.element("toast");
 
     if (!toast) {
       toast = document.createElement("div");
-      toast.id = "resonaToast";
-
-      Object.assign(toast.style, {
-        position: "fixed",
-        left: "16px",
-        right: "16px",
-        bottom: "calc(78px + env(safe-area-inset-bottom, 0px))",
-        zIndex: "1000",
-        padding: "13px 16px",
-        borderRadius: "14px",
-        background: "#191922",
-        border: "1px solid rgba(255,255,255,.15)",
-        color: "#f3f1fa",
-        fontSize: "14px",
-        boxShadow: "0 10px 35px rgba(0,0,0,.35)",
-        opacity: "0",
-        transform: "translateY(8px)",
-        transition: "opacity .2s, transform .2s"
-      });
+      toast.id = "toast";
+      toast.setAttribute("role", "status");
+      toast.setAttribute("aria-live", "polite");
 
       document.body.appendChild(toast);
     }
 
-    toast.textContent = message;
+    toast.textContent = String(message ?? "");
 
-    toast.style.borderColor =
-      type === "error"
-        ? "rgba(251,113,133,.6)"
-        : type === "success"
-          ? "rgba(52,211,153,.6)"
-          : "rgba(167,139,250,.5)";
+    toast.dataset.type = type;
 
-    toast.style.opacity = "1";
-    toast.style.transform = "translateY(0)";
+    Object.assign(toast.style, {
+      position: "fixed",
+      left: "16px",
+      right: "16px",
+      bottom: "calc(145px + env(safe-area-inset-bottom, 0px))",
+      zIndex: "2000",
+      padding: "13px 16px",
+      borderRadius: "14px",
+      background: "#191922",
+      border: "1px solid rgba(167,139,250,.5)",
+      color: "#f3f1fa",
+      fontSize: "14px",
+      boxShadow: "0 10px 35px rgba(0,0,0,.35)",
+      opacity: "1",
+      visibility: "visible",
+      transform: "translateY(0)",
+      transition: "opacity .2s, transform .2s"
+    });
+
+    if (type === "error") {
+      toast.style.borderColor = "rgba(251,113,133,.7)";
+    } else if (type === "success") {
+      toast.style.borderColor = "rgba(52,211,153,.7)";
+    }
 
     clearTimeout(this._toastTimer);
 
     this._toastTimer = setTimeout(() => {
       toast.style.opacity = "0";
       toast.style.transform = "translateY(8px)";
-    }, 3200);
-  },
 
-  saveJSON(key, value) {
-    return ResonaStorage.set(key, value);
+      setTimeout(() => {
+        if (toast.style.opacity === "0") {
+          toast.style.visibility = "hidden";
+        }
+      }, 250);
+    }, 3200);
   },
 
   loadJSON(key, fallback) {
     return ResonaStorage.get(key, fallback);
+  },
+
+  saveJSON(key, value) {
+    return ResonaStorage.set(key, value);
   },
 
   shuffle(array) {
@@ -330,66 +376,217 @@ const ResonaUtils = {
     for (let i = result.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
 
-      [result[i], result[j]] = [
-        result[j],
-        result[i]
-      ];
+      [result[i], result[j]] = [result[j], result[i]];
     }
 
     return result;
+  },
+
+  normaliseList(value) {
+    if (Array.isArray(value)) return value;
+
+    if (typeof value === "string" && value.trim()) {
+      return value.split(",").map(item => item.trim());
+    }
+
+    return [];
+  },
+
+  getTrackMoods(track) {
+    return [
+      ...this.normaliseList(track.moods),
+      ...this.normaliseList(track.mood),
+      ...this.normaliseList(track.tags),
+      ...this.normaliseList(track.genres),
+      ...this.normaliseList(track.genre)
+    ].map(item => this.normalise(item));
   }
 };
 
 
 /* =========================================================
-   5. CATALOGUE VALIDATION
+   5. CATALOGUE NORMALISATION
    ========================================================= */
 
 const ResonaCatalogue = {
-  setTracks(tracks) {
-    if (!Array.isArray(tracks)) {
-      throw new TypeError("Tracks must be an array.");
+  normaliseTrack(source) {
+    if (!source || typeof source !== "object") {
+      return null;
     }
 
+    const id = source.id ??
+      source.track_id ??
+      source.trackId;
+
+    const title = source.title ??
+      source.name ??
+      source.track_name;
+
+    const artistValue = source.artist ??
+      source.artist_name ??
+      source.artistName;
+
+    const artist = typeof artistValue === "object"
+      ? artistValue?.name || artistValue?.display_name || ""
+      : artistValue;
+
+    if (
+      id === undefined ||
+      id === null ||
+      !String(title ?? "").trim() ||
+      !String(artist ?? "").trim()
+    ) {
+      return null;
+    }
+
+    const artwork = source.artwork ??
+      source.artwork_url ??
+      source.artworkUrl ??
+      source.cover_url ??
+      source.coverUrl ??
+      source.image_url ??
+      source.imageUrl ??
+      "";
+
+    const audioUrl = source.audioUrl ??
+      source.audio_url ??
+      source.stream_url ??
+      source.streamUrl ??
+      "";
+
+    const albumValue = source.album ?? source.album_name ?? "";
+
+    const album = typeof albumValue === "object"
+      ? albumValue?.title || albumValue?.name || ""
+      : albumValue;
+
+    const duration = Number(
+      source.duration_seconds ??
+      source.duration ??
+      source.durationSeconds ??
+      0
+    );
+
+    return {
+      id: String(id),
+      title: String(title).trim(),
+      artist: String(artist).trim(),
+      album: String(album ?? ""),
+      artwork: ResonaUtils.validHttpUrl(artwork),
+      audioUrl: ResonaUtils.validHttpUrl(audioUrl),
+      duration: Number.isFinite(duration) && duration > 0
+        ? duration
+        : 0,
+
+      country: String(
+        source.country ??
+        source.country_name ??
+        ""
+      ),
+
+      continent: this.normaliseContinent(
+        source.continent ??
+        source.continent_id ??
+        ""
+      ),
+
+      genre: source.genre ?? source.genres ?? "",
+      moods: source.moods ?? source.mood ?? source.tags ?? [],
+
+      releaseDate: String(
+        source.releaseDate ??
+        source.release_date ??
+        ""
+      ),
+
+      rightsConfirmed:
+        source.rightsConfirmed === true ||
+        source.rights_confirmed === true,
+
+      streamAllowed:
+        source.streamAllowed === true ||
+        source.stream_allowed === true,
+
+      lyrics: typeof source.lyrics === "string"
+        ? source.lyrics
+        : "",
+
+      lyricsTimed:
+        source.lyrics_timed === true ||
+        source.lyricsTimed === true
+    };
+  },
+
+  normaliseContinent(value) {
+    const text = ResonaUtils.normalise(value);
+
+    const aliases = {
+      "africa": "africa",
+      "europe": "europe",
+      "asia": "asia",
+      "north america": "north-america",
+      "north-america": "north-america",
+      "south america": "south-america",
+      "south-america": "south-america",
+      "oceania": "oceania",
+      "australia": "oceania"
+    };
+
+    return aliases[text] || text;
+  },
+
+  setTracks(tracks) {
+    if (!Array.isArray(tracks)) {
+      throw new TypeError("The catalogue must contain an array of tracks.");
+    }
+
+    const seen = new Set();
+
     Resona.state.catalogue.tracks = tracks
-      .filter(track =>
-        track &&
-        track.id !== undefined &&
-        typeof track.title === "string" &&
-        typeof track.artist === "string"
+      .map(track => this.normaliseTrack(track))
+      .filter(Boolean)
+      .filter(track => {
+        if (seen.has(track.id)) return false;
+
+        seen.add(track.id);
+
+        return true;
+      });
+
+    Resona.state.catalogue.artists = [
+      ...new Set(
+        Resona.state.catalogue.tracks.map(track => track.artist)
       )
-      .map(track => ({
-        id: String(track.id),
-        title: track.title.trim(),
-        artist: track.artist.trim(),
-        album: track.album || "",
-        artwork: track.artwork || "",
-        audioUrl: track.audioUrl || "",
-        duration: Number(track.duration) || 0,
-        country: track.country || "",
-        continent: track.continent || "",
-        genre: track.genre || "",
-        releaseDate: track.releaseDate || "",
-        rightsConfirmed: track.rightsConfirmed === true
-      }));
+    ];
 
-    Resona.state.catalogue.tracks.forEach(track => {
-      if (track.audioUrl) {
-        try {
-          const url = new URL(track.audioUrl, location.href);
+    Resona.state.catalogue.albums = [
+      ...new Set(
+        Resona.state.catalogue.tracks
+          .map(track => track.album)
+          .filter(Boolean)
+      )
+    ];
 
-          if (!["https:", "http:"].includes(url.protocol)) {
-            track.audioUrl = "";
-          }
-        } catch {
-          track.audioUrl = "";
-        }
-      }
-    });
-
+    this.reconcileQueue();
     Resona.renderCurrentPage();
 
     return Resona.state.catalogue.tracks.length;
+  },
+
+  reconcileQueue() {
+    const currentId = Resona.state.currentTrack?.id;
+
+    if (!Resona.state.queue.length) return;
+
+    Resona.state.queue = Resona.state.queue
+      .map(item => this.findTrack(item.id))
+      .filter(Boolean);
+
+    Resona.state.queueIndex = currentId
+      ? Resona.state.queue.findIndex(
+          item => item.id === String(currentId)
+        )
+      : -1;
   },
 
   findTrack(id) {
@@ -410,7 +607,8 @@ const ResonaCatalogue = {
         track.album,
         track.country,
         track.continent,
-        track.genre
+        track.genre,
+        ...ResonaUtils.getTrackMoods(track)
       ].join(" ");
 
       return ResonaUtils.normalise(searchable).includes(q);
@@ -418,18 +616,26 @@ const ResonaCatalogue = {
   },
 
   byContinent(continentId) {
-    return Resona.state.catalogue.tracks.filter(
-      track =>
-        ResonaUtils.normalise(track.continent) ===
-        ResonaUtils.normalise(continentId)
+    const wanted = this.normaliseContinent(continentId);
+
+    return Resona.state.catalogue.tracks.filter(track =>
+      this.normaliseContinent(track.continent) === wanted
     );
   },
 
   byCountry(country) {
-    return Resona.state.catalogue.tracks.filter(
-      track =>
-        ResonaUtils.normalise(track.country) ===
-        ResonaUtils.normalise(country)
+    const wanted = ResonaUtils.normalise(country);
+
+    return Resona.state.catalogue.tracks.filter(track =>
+      ResonaUtils.normalise(track.country) === wanted
+    );
+  },
+
+  byMood(mood) {
+    const wanted = ResonaUtils.normalise(mood);
+
+    return Resona.state.catalogue.tracks.filter(track =>
+      ResonaUtils.getTrackMoods(track).includes(wanted)
     );
   }
 };
@@ -445,43 +651,50 @@ const ResonaLibrary = {
 
     Resona.state.library = {
       likedTracks: Array.isArray(saved.likedTracks)
-        ? saved.likedTracks
+        ? saved.likedTracks.map(String)
         : [],
 
       savedAlbums: Array.isArray(saved.savedAlbums)
-        ? saved.savedAlbums
+        ? saved.savedAlbums.map(String)
         : [],
 
       followedArtists: Array.isArray(saved.followedArtists)
-        ? saved.followedArtists
+        ? saved.followedArtists.map(String)
         : [],
 
       playlists: Array.isArray(saved.playlists)
         ? saved.playlists
+            .filter(item => item && typeof item === "object")
+            .map(item => ({
+              id: String(item.id ?? ""),
+              name: String(item.name ?? "Untitled playlist"),
+              trackIds: Array.isArray(item.trackIds)
+                ? item.trackIds.map(String)
+                : [],
+              createdAt: item.createdAt || ""
+            }))
         : []
     };
   },
 
   save() {
-    ResonaUtils.saveJSON(
+    return ResonaUtils.saveJSON(
       "library",
       Resona.state.library
     );
   },
 
   isLiked(trackId) {
-    return Resona.state.library.likedTracks
-      .map(String)
-      .includes(String(trackId));
+    return Resona.state.library.likedTracks.includes(String(trackId));
   },
 
   toggleLike(trackId) {
     const id = String(trackId);
     const liked = Resona.state.library.likedTracks;
 
-    if (liked.map(String).includes(id)) {
+    if (liked.includes(id)) {
       Resona.state.library.likedTracks =
-        liked.filter(item => String(item) !== id);
+        liked.filter(item => item !== id);
     } else {
       liked.push(id);
     }
@@ -496,20 +709,17 @@ const ResonaLibrary = {
     const cleanName = String(name || "").trim();
 
     if (!cleanName) {
-      ResonaUtils.showMessage(
-        "Enter a playlist name first.",
-        "error"
-      );
-
+      ResonaUtils.showMessage("Enter a playlist name first.", "error");
       return null;
     }
 
     const playlist = {
-      id: crypto.randomUUID
-        ? crypto.randomUUID()
-        : "playlist_" + Date.now(),
+      id: "playlist_" +
+        Date.now().toString(36) +
+        "_" +
+        Math.random().toString(36).slice(2, 8),
 
-      name: cleanName,
+      name: cleanName.slice(0, 80),
       trackIds: [],
       createdAt: new Date().toISOString()
     };
@@ -517,20 +727,21 @@ const ResonaLibrary = {
     Resona.state.library.playlists.push(playlist);
 
     this.save();
-    Resona.renderCurrentPage();
 
     return playlist;
   },
 
   addToPlaylist(playlistId, trackId) {
     const playlist = Resona.state.library.playlists.find(
-      item => String(item.id) === String(playlistId)
+      item => item.id === String(playlistId)
     );
 
     if (!playlist) return false;
 
-    if (!playlist.trackIds.map(String).includes(String(trackId))) {
-      playlist.trackIds.push(String(trackId));
+    const id = String(trackId);
+
+    if (!playlist.trackIds.includes(id)) {
+      playlist.trackIds.push(id);
     }
 
     this.save();
@@ -539,11 +750,16 @@ const ResonaLibrary = {
   },
 
   recordRecentlyPlayed(trackId) {
+    const id = String(trackId);
     const history = ResonaUtils.loadJSON("history", []);
 
+    const oldHistory = Array.isArray(history)
+      ? history.map(String)
+      : [];
+
     const updated = [
-      String(trackId),
-      ...history.map(String).filter(id => id !== String(trackId))
+      id,
+      ...oldHistory.filter(item => item !== id)
     ].slice(0, 50);
 
     ResonaUtils.saveJSON("history", updated);
@@ -551,6 +767,8 @@ const ResonaLibrary = {
 
   getRecentlyPlayed() {
     const history = ResonaUtils.loadJSON("history", []);
+
+    if (!Array.isArray(history)) return [];
 
     return history
       .map(id => ResonaCatalogue.findTrack(id))
@@ -560,67 +778,163 @@ const ResonaLibrary = {
 
 
 /* =========================================================
-   7. NAVIGATION
+   7. TRACK ROW RENDERER
    ========================================================= */
 
-const ResonaNavigation = {
-  pages: [
-    "home",
-    "explore",
-    "search",
-    "library",
-    "artist"
-  ],
+Resona.renderTrackRow = function(track) {
+  const id = ResonaUtils.escapeHTML(track.id);
+  const title = ResonaUtils.escapeHTML(track.title);
+  const artist = ResonaUtils.escapeHTML(track.artist);
+  const liked = ResonaLibrary.isLiked(track.id);
 
-  show(name) {
-    const pageName = String(name || "").toLowerCase();
+  const art = track.artwork
+    ? `<img src="${ResonaUtils.escapeHTML(track.artwork)}" alt="" loading="lazy">`
+    : "♫";
 
-    if (!this.pages.includes(pageName)) {
-      ResonaUtils.showMessage("That page is not available yet.");
-      return;
-    }
+  return `
+    <div class="row" data-track-row="${id}">
+      <button
+        class="art"
+        type="button"
+        data-play-track="${id}"
+        style="width:48px;height:48px"
+        aria-label="Play ${title}"
+      >${art}</button>
 
-    document.querySelectorAll(".page").forEach(page => {
-      page.classList.remove("active");
+      <button
+        class="m"
+        type="button"
+        data-play-track="${id}"
+        style="min-width:0;text-align:left"
+      >
+        <div class="tt">${title}</div>
+        <div class="tag">${artist}</div>
+      </button>
+
+      <button
+        class="ic"
+        type="button"
+        data-like-track="${id}"
+        aria-label="${liked ? "Unlike" : "Like"} ${title}"
+        aria-pressed="${liked ? "true" : "false"}"
+      >${liked ? "♥" : "♡"}</button>
+    </div>
+  `;
+};
+
+
+/* =========================================================
+   8. HOME PAGE
+   ========================================================= */
+
+const ResonaHome = {
+  render() {
+    const page = ResonaUtils.element("page-home");
+
+    if (!page) return;
+
+    const recent = ResonaLibrary.getRecentlyPlayed();
+    const tracks = Resona.state.catalogue.tracks;
+
+    page.innerHTML = `
+      <div class="section-heading">
+        <div>
+          <div class="tag">Music without borders</div>
+          <h1>Resona</h1>
+        </div>
+
+        <button
+          class="ic"
+          id="homeSearch"
+          type="button"
+          aria-label="Search music"
+        >⌕</button>
+      </div>
+
+      <div class="hero glass">
+        <div>
+          <div class="tag">Discover something new</div>
+          <h2 style="margin:5px 0">Your world of music</h2>
+          <p class="tag">Sounds and artists from around the world.</p>
+        </div>
+
+        <button class="cta" id="homeExplore" type="button">
+          Explore
+        </button>
+      </div>
+
+      <div class="section-heading">
+        <h2>Recently played</h2>
+      </div>
+
+      <div class="hs" id="recent"></div>
+
+      <div class="section-heading">
+        <h2>Available music</h2>
+      </div>
+
+      <div id="recommended"></div>
+    `;
+
+    page.querySelector("#homeSearch")?.addEventListener("click", () => {
+      ResonaNavigation.show("search");
     });
 
-    const page = ResonaUtils.element("page-" + pageName);
-
-    if (!page) {
-      ResonaUtils.showMessage(
-        "The " + pageName + " page has not been added to index.html yet."
-      );
-
-      return;
-    }
-
-    page.classList.add("active");
-
-    document.querySelectorAll("nav button").forEach(button => {
-      button.classList.toggle(
-        "on",
-        button.dataset.page === pageName ||
-        button.getAttribute("onclick")?.includes(
-          "'" + pageName + "'"
-        )
-      );
+    page.querySelector("#homeExplore")?.addEventListener("click", () => {
+      ResonaNavigation.show("explore");
     });
 
-    Resona.state.currentPage = pageName;
+    const recentEl = page.querySelector("#recent");
 
-    ResonaUtils.saveJSON("lastPage", pageName);
+    if (recentEl) {
+      recentEl.innerHTML = recent.length
+        ? recent.map(track => `
+            <button
+              class="card"
+              type="button"
+              data-play-track="${ResonaUtils.escapeHTML(track.id)}"
+            >
+              <div class="art">
+                ${track.artwork
+                  ? `<img src="${ResonaUtils.escapeHTML(track.artwork)}" alt="" loading="lazy">`
+                  : "♫"}
+              </div>
 
-    const main = ResonaUtils.element("main");
+              <div class="tt">${ResonaUtils.escapeHTML(track.title)}</div>
+              <div class="tag">${ResonaUtils.escapeHTML(track.artist)}</div>
+            </button>
+          `).join("")
+        : `
+            <div class="empty-state" style="width:100%">
+              <p class="tag">Your listening history will appear here.</p>
+            </div>
+          `;
+    }
 
-    if (main) main.scrollTop = 0;
+    const recommended = page.querySelector("#recommended");
 
-    Resona.renderCurrentPage();
+    if (recommended) {
+      recommended.innerHTML = tracks.length
+        ? tracks.map(track => Resona.renderTrackRow(track)).join("")
+        : `
+            <div class="empty-state">
+              <div class="symbol">♫</div>
+              <p>${Resona.state.isLoadingCatalogue
+                ? "Loading the music catalogue..."
+                : "The Resona catalogue is not connected yet."}</p>
+
+              <p class="tag" style="margin-top:6px">
+                Real releases will appear here when the catalogue is connected.
+              </p>
+            </div>
+          `;
+    }
   }
 };
 
 
 /* =========================================================
-   8. GLOBAL EXPLORE
+   9. GLOBAL EXPLORE
    ========================================================= */
 
 const ResonaExplore = {
@@ -629,10 +943,8 @@ const ResonaExplore = {
 
     if (!page) return;
 
-    const selected = Resona.state.selectedContinent;
-
-    if (selected) {
-      this.renderContinent(selected);
+    if (Resona.state.selectedContinent) {
+      this.renderContinent(Resona.state.selectedContinent);
       return;
     }
 
@@ -645,15 +957,15 @@ const ResonaExplore = {
       </div>
 
       <p class="tag" style="margin:8px 0 18px">
-        Discover music by continent and country.
+        Explore music by continent and country.
       </p>
 
       <div class="continent-grid">
         ${RESONA_CONTINENTS.map(continent => `
           <button
             class="continent-card"
-            data-continent="${ResonaUtils.escapeHTML(continent.id)}"
             type="button"
+            data-continent="${ResonaUtils.escapeHTML(continent.id)}"
           >
             <span class="continent-symbol">${continent.symbol}</span>
             <span class="continent-name">${ResonaUtils.escapeHTML(continent.name)}</span>
@@ -662,7 +974,7 @@ const ResonaExplore = {
         `).join("")}
       </div>
 
-      <h2>Worldwide releases</h2>
+      <h2>Worldwide music</h2>
       <div id="exploreGlobalTracks"></div>
     `;
 
@@ -672,7 +984,7 @@ const ResonaExplore = {
       });
     });
 
-    const globalTracks = ResonaUtils.element("exploreGlobalTracks");
+    const globalTracks = page.querySelector("#exploreGlobalTracks");
 
     if (globalTracks) {
       const tracks = Resona.state.catalogue.tracks;
@@ -684,7 +996,9 @@ const ResonaExplore = {
   },
 
   openContinent(continentId) {
-    if (!RESONA_CONTINENTS.some(c => c.id === continentId)) return;
+    if (!RESONA_CONTINENTS.some(item => item.id === continentId)) {
+      return;
+    }
 
     Resona.state.selectedContinent = continentId;
     Resona.state.selectedCountry = null;
@@ -694,6 +1008,7 @@ const ResonaExplore = {
 
   renderContinent(continentId) {
     const page = ResonaUtils.element("page-explore");
+
     const continent = RESONA_CONTINENTS.find(
       item => item.id === continentId
     );
@@ -714,9 +1029,10 @@ const ResonaExplore = {
       <div style="margin-top:18px">
         <div style="font-size:32px">${continent.symbol}</div>
         <h1>${ResonaUtils.escapeHTML(continent.name)}</h1>
+
         <p class="tag" style="margin-top:6px">
           ${country
-            ? "Discover music from " + ResonaUtils.escapeHTML(country)
+            ? "Music from " + ResonaUtils.escapeHTML(country)
             : ResonaUtils.escapeHTML(continent.description)}
         </p>
       </div>
@@ -727,12 +1043,13 @@ const ResonaExplore = {
         </button>
       ` : `
         <h2>Countries</h2>
+
         <div class="country-grid">
           ${continent.countries.map(name => `
             <button
               class="country-card"
-              data-country="${ResonaUtils.escapeHTML(name)}"
               type="button"
+              data-country="${ResonaUtils.escapeHTML(name)}"
             >
               <div class="country-name">${ResonaUtils.escapeHTML(name)}</div>
               <div class="country-meta">Explore music</div>
@@ -777,7 +1094,7 @@ const ResonaExplore = {
         <div class="symbol">♫</div>
         <p>No published tracks are available here yet.</p>
         <p class="tag" style="margin-top:6px">
-          Music will appear when the real catalogue is connected.
+          This area will populate when matching releases enter the real catalogue.
         </p>
       </div>
     `;
@@ -786,67 +1103,90 @@ const ResonaExplore = {
 
 
 /* =========================================================
-   9. SEARCH
+   10. SEARCH
    ========================================================= */
 
 const ResonaSearch = {
+  type: "all",
+
   render() {
     const page = ResonaUtils.element("page-search");
 
     if (!page) return;
 
-    page.innerHTML = `
-      <h1>Search</h1>
+    /*
+      Use the existing HTML search controls whenever possible.
+      Do not replace the whole page if those controls exist.
+    */
 
-      <p class="tag" style="margin:8px 0 16px">
-        Find songs, artists, albums and more.
-      </p>
+    let input = ResonaUtils.element("searchInput");
+    let results = ResonaUtils.element("searchResults");
 
-      <input
-        class="q"
-        id="resonaSearchInput"
-        type="search"
-        placeholder="What do you want to hear?"
-        autocomplete="off"
-        aria-label="Search music"
-      >
+    if (!input || !results) {
+      page.innerHTML = `
+        <h1>Search</h1>
 
-      <div class="chips" style="margin-top:14px">
-        <button class="chip on" data-search-type="all">All</button>
-        <button class="chip" data-search-type="track">Songs</button>
-        <button class="chip" data-search-type="artist">Artists</button>
-        <button class="chip" data-search-type="album">Albums</button>
-      </div>
+        <p class="tag" style="margin:8px 0 16px">
+          Find songs, artists and albums.
+        </p>
 
-      <div id="resonaSearchResults" style="margin-top:18px"></div>
-    `;
+        <input
+          class="q"
+          id="searchInput"
+          type="search"
+          placeholder="What do you want to hear?"
+          autocomplete="off"
+          aria-label="Search music"
+        >
 
-    const input = page.querySelector("#resonaSearchInput");
+        <div class="chips" style="margin-top:14px">
+          <button class="chip on" data-search-type="all" type="button">All</button>
+          <button class="chip" data-search-type="track" type="button">Songs</button>
+          <button class="chip" data-search-type="artist" type="button">Artists</button>
+          <button class="chip" data-search-type="album" type="button">Albums</button>
+        </div>
 
-    input.addEventListener("input", () => {
-      Resona.state.searchQuery = input.value;
-      this.run(input.value);
-    });
+        <div id="searchResults" style="margin-top:18px"></div>
+      `;
+
+      input = ResonaUtils.element("searchInput");
+      results = ResonaUtils.element("searchResults");
+    }
+
+    if (!input || !results) return;
+
+    if (!input.dataset.resonaBound) {
+      input.dataset.resonaBound = "true";
+
+      input.addEventListener("input", () => {
+        Resona.state.searchQuery = input.value;
+        this.run(input.value);
+      });
+    }
 
     page.querySelectorAll("[data-search-type]").forEach(button => {
+      if (button.dataset.resonaBound) return;
+
+      button.dataset.resonaBound = "true";
+
       button.addEventListener("click", () => {
         page.querySelectorAll("[data-search-type]").forEach(item => {
-          item.classList.remove("on");
+          item.classList.toggle("on", item === button);
         });
 
-        button.classList.add("on");
+        this.type = button.dataset.searchType || "all";
+        Resona.state.searchType = this.type;
 
-        this.type = button.dataset.searchType;
         this.run(input.value);
       });
     });
 
-    this.type = "all";
-    this.run("");
+    input.value = Resona.state.searchQuery || "";
+    this.run(input.value);
   },
 
   run(query) {
-    const results = ResonaUtils.element("resonaSearchResults");
+    const results = ResonaUtils.element("searchResults");
 
     if (!results) return;
 
@@ -858,7 +1198,7 @@ const ResonaSearch = {
           <div class="symbol">⌕</div>
           <p>Search the Resona catalogue.</p>
           <p class="tag" style="margin-top:6px">
-            Results will appear as music becomes available.
+            Search results will appear when catalogue music is available.
           </p>
         </div>
       `;
@@ -866,7 +1206,29 @@ const ResonaSearch = {
       return;
     }
 
-    const tracks = ResonaCatalogue.search(q);
+    const allMatches = ResonaCatalogue.search(q);
+
+    let tracks = allMatches;
+
+    if (this.type === "track") {
+      tracks = allMatches.filter(track =>
+        ResonaUtils.normalise(track.title).includes(
+          ResonaUtils.normalise(q)
+        )
+      );
+    } else if (this.type === "artist") {
+      tracks = allMatches.filter(track =>
+        ResonaUtils.normalise(track.artist).includes(
+          ResonaUtils.normalise(q)
+        )
+      );
+    } else if (this.type === "album") {
+      tracks = allMatches.filter(track =>
+        ResonaUtils.normalise(track.album).includes(
+          ResonaUtils.normalise(q)
+        )
+      );
+    }
 
     results.innerHTML = tracks.length
       ? tracks.map(track => Resona.renderTrackRow(track)).join("")
@@ -874,7 +1236,7 @@ const ResonaSearch = {
         <div class="empty-state">
           <p>No catalogue results for "${ResonaUtils.escapeHTML(q)}".</p>
           <p class="tag" style="margin-top:6px">
-            Search only returns music available in the connected catalogue.
+            Search only returns tracks in the connected catalogue.
           </p>
         </div>
       `;
@@ -883,7 +1245,7 @@ const ResonaSearch = {
 
 
 /* =========================================================
-   10. LIBRARY PAGE
+   11. LIBRARY PAGE
    ========================================================= */
 
 const ResonaLibraryPage = {
@@ -892,95 +1254,138 @@ const ResonaLibraryPage = {
 
     if (!page) return;
 
-    const liked = Resona.state.library.likedTracks
-      .map(id => ResonaCatalogue.findTrack(id))
-      .filter(Boolean);
+    const existingFilters = ResonaUtils.element("libraryFilters");
+    const existingList = ResonaUtils.element("libraryList");
 
-    const history = ResonaLibrary.getRecentlyPlayed();
+    /*
+      Preserve the current HTML structure when it exists.
+    */
 
-    const playlists = Resona.state.library.playlists;
+    if (!existingFilters || !existingList) {
+      page.innerHTML = `
+        <h1>Your Library</h1>
 
-    page.innerHTML = `
-      <h1>Your Library</h1>
+        <p class="tag" style="margin-top:6px">
+          Your saved music and listening history.
+        </p>
 
-      <p class="tag" style="margin-top:6px">
-        Your saved music and listening history.
-      </p>
+        <div class="chips" id="libraryFilters" style="margin:16px 0">
+          <button class="chip on" data-library="liked" type="button">Liked songs</button>
+          <button class="chip" data-library="recent" type="button">Recently played</button>
+          <button class="chip" data-library="playlists" type="button">Playlists</button>
+        </div>
 
-      <div class="chips" style="margin:16px 0">
-        <button class="chip on" data-library-tab="liked">Liked songs</button>
-        <button class="chip" data-library-tab="history">Recently played</button>
-        <button class="chip" data-library-tab="playlists">Playlists</button>
-      </div>
+        <div id="libraryList"></div>
 
-      <div id="libraryContent"></div>
+        <button class="cta secondary full" id="createPlaylist" style="margin-top:18px" type="button">
+          + Create playlist
+        </button>
+      `;
+    }
 
-      <button class="cta secondary full" id="createPlaylist" style="margin-top:18px">
-        + Create playlist
-      </button>
-    `;
+    const filters = ResonaUtils.element("libraryFilters");
+    const list = ResonaUtils.element("libraryList");
 
-    page.querySelectorAll("[data-library-tab]").forEach(button => {
+    if (!filters || !list) return;
+
+    filters.querySelectorAll("[data-library]").forEach(button => {
+      if (button.dataset.resonaBound) return;
+
+      button.dataset.resonaBound = "true";
+
       button.addEventListener("click", () => {
-        page.querySelectorAll("[data-library-tab]").forEach(item => {
-          item.classList.remove("on");
+        Resona.state.libraryTab = button.dataset.library;
+
+        filters.querySelectorAll("[data-library]").forEach(item => {
+          item.classList.toggle("on", item === button);
         });
 
-        button.classList.add("on");
-
-        this.showTab(button.dataset.libraryTab);
+        this.renderList();
       });
     });
 
-    page.querySelector("#createPlaylist").addEventListener("click", () => {
-      const name = prompt("Name your playlist:");
+    const createButton = ResonaUtils.element("createPlaylist");
 
-      if (name === null) return;
+    if (createButton && !createButton.dataset.resonaBound) {
+      createButton.dataset.resonaBound = "true";
 
-      const playlist = ResonaLibrary.addPlaylist(name);
+      createButton.addEventListener("click", () => {
+        const name = prompt("Name your playlist:");
 
-      if (playlist) {
-        this.showTab("playlists");
-        ResonaUtils.showMessage("Playlist created.", "success");
-      }
-    });
+        if (name === null) return;
 
-    this.showTab("liked");
+        const playlist = ResonaLibrary.addPlaylist(name);
+
+        if (playlist) {
+          Resona.state.libraryTab = "playlists";
+          this.render();
+          ResonaUtils.showMessage("Playlist created.", "success");
+        }
+      });
+    }
+
+    this.renderList();
   },
 
-  showTab(tab) {
-    const content = ResonaUtils.element("libraryContent");
+  renderList() {
+    const list = ResonaUtils.element("libraryList");
 
-    if (!content) return;
+    if (!list) return;
+
+    const tab = Resona.state.libraryTab || "liked";
 
     if (tab === "liked") {
       const tracks = Resona.state.library.likedTracks
         .map(id => ResonaCatalogue.findTrack(id))
         .filter(Boolean);
 
-      content.innerHTML = tracks.length
+      list.innerHTML = tracks.length
         ? tracks.map(track => Resona.renderTrackRow(track)).join("")
         : this.empty("Your liked songs will appear here.");
-    } else if (tab === "history") {
+    } else if (tab === "recent") {
       const tracks = ResonaLibrary.getRecentlyPlayed();
 
-      content.innerHTML = tracks.length
+      list.innerHTML = tracks.length
         ? tracks.map(track => Resona.renderTrackRow(track)).join("")
-        : this.empty("Songs you listen to will appear here.");
+        : this.empty("Songs you play will appear here.");
     } else if (tab === "playlists") {
       const playlists = Resona.state.library.playlists;
 
-      content.innerHTML = playlists.length
+      list.innerHTML = playlists.length
         ? playlists.map(playlist => `
             <div class="row">
               <div class="art" style="width:48px;height:48px">♫</div>
+
               <div class="m">
                 <div class="tt">${ResonaUtils.escapeHTML(playlist.name)}</div>
                 <div class="tag">${playlist.trackIds.length} tracks</div>
               </div>
+
+              <button
+                class="ic"
+                type="button"
+                data-delete-playlist="${ResonaUtils.escapeHTML(playlist.id)}"
+                aria-label="Delete ${ResonaUtils.escapeHTML(playlist.name)}"
+              >×</button>
             </div>
           `).join("")
         : this.empty("Create your first playlist.");
+
+      list.querySelectorAll("[data-delete-playlist]").forEach(button => {
+        button.addEventListener("click", () => {
+          const id = button.dataset.deletePlaylist;
+
+          Resona.state.library.playlists =
+            Resona.state.library.playlists.filter(
+              item => item.id !== id
+            );
+
+          ResonaLibrary.save();
+          this.renderList();
+
+          ResonaUtils.showMessage("Playlist deleted.", "success");
+        });
+      });
     }
   },
 
@@ -996,7 +1401,133 @@ const ResonaLibraryPage = {
 
 
 /* =========================================================
-   11. ARTIST STUDIO ENTRY POINT
+   12. RESET / MOOD DISCOVERY
+   ========================================================= */
+
+const ResonaReset = {
+  render() {
+    const page = ResonaUtils.element("page-reset");
+
+    if (!page) return;
+
+    let moods = ResonaUtils.element("moods");
+    let button = ResonaUtils.element("resetButton");
+    let message = ResonaUtils.element("resetMsg");
+
+    if (!moods || !button || !message) {
+      page.innerHTML = `
+        <div class="tag">Find your sound</div>
+        <h1>Reset your mood</h1>
+
+        <p class="tag" style="margin:8px 0 18px">
+          Choose the feeling you want your music to match.
+        </p>
+
+        <div class="mood-grid" id="moods">
+          ${RESONA_MOODS.map(mood => `
+            <button
+              class="mood"
+              type="button"
+              data-mood="${mood.id}"
+            >
+              <span>${mood.symbol}</span>
+              <span>${ResonaUtils.escapeHTML(mood.name)}</span>
+            </button>
+          `).join("")}
+        </div>
+
+        <button class="cta full" id="resetButton" style="margin-top:20px" type="button">
+          Find my music
+        </button>
+
+        <div id="resetMsg" style="margin-top:18px"></div>
+      `;
+
+      moods = ResonaUtils.element("moods");
+      button = ResonaUtils.element("resetButton");
+      message = ResonaUtils.element("resetMsg");
+    }
+
+    if (!moods || !button || !message) return;
+
+    moods.querySelectorAll("[data-mood]").forEach(item => {
+      if (item.dataset.resonaBound) return;
+
+      item.dataset.resonaBound = "true";
+
+      item.addEventListener("click", () => {
+        Resona.state.selectedMood = item.dataset.mood;
+
+        moods.querySelectorAll("[data-mood]").forEach(other => {
+          other.classList.toggle("on", other === item);
+          other.setAttribute(
+            "aria-pressed",
+            other === item ? "true" : "false"
+          );
+        });
+
+        message.textContent = "Selected: " +
+          (RESONA_MOODS.find(
+            mood => mood.id === item.dataset.mood
+          )?.name || item.dataset.mood);
+      });
+    });
+
+    if (!button.dataset.resonaBound) {
+      button.dataset.resonaBound = "true";
+
+      button.addEventListener("click", () => {
+        this.findMusic();
+      });
+    }
+
+    if (Resona.state.selectedMood) {
+      moods.querySelectorAll("[data-mood]").forEach(item => {
+        const selected = item.dataset.mood === Resona.state.selectedMood;
+
+        item.classList.toggle("on", selected);
+        item.setAttribute("aria-pressed", selected ? "true" : "false");
+      });
+    }
+  },
+
+  findMusic() {
+    const mood = Resona.state.selectedMood;
+    const message = ResonaUtils.element("resetMsg");
+
+    if (!mood) {
+      ResonaUtils.showMessage("Choose a mood first.");
+      return;
+    }
+
+    const tracks = ResonaCatalogue.byMood(mood);
+
+    if (!message) return;
+
+    if (!tracks.length) {
+      message.innerHTML = `
+        <div class="empty-state">
+          <div class="symbol">♫</div>
+          <p>No matching tracks are available for this mood yet.</p>
+          <p class="tag" style="margin-top:6px">
+            Recommendations require actual catalogue mood or genre metadata.
+          </p>
+        </div>
+      `;
+
+      return;
+    }
+
+    message.innerHTML = `
+      <h2>${ResonaUtils.escapeHTML(mood)} music</h2>
+      ${tracks.map(track => Resona.renderTrackRow(track)).join("")}
+    `;
+  }
+};
+
+
+/* =========================================================
+   13. ARTIST STUDIO
    ========================================================= */
 
 const ResonaArtist = {
@@ -1010,38 +1541,38 @@ const ResonaArtist = {
       <h1 style="margin-top:4px">Artist Studio</h1>
 
       <p class="tag" style="margin-top:10px">
-        Build your artist profile and prepare music for publishing.
+        A home for your music, releases and artist identity.
       </p>
 
       <div class="panel" style="margin-top:20px">
         <h3>Publish your music</h3>
 
         <p class="tag" style="margin:8px 0 16px">
-          Artist accounts, authorised audio uploads, release management,
-          and publishing controls will be connected to the Resona backend.
+          Artist registration, authorised audio uploads and release
+          management require a connected Resona backend.
         </p>
 
-        <button class="cta full" id="artistStart">
+        <button class="cta full" id="artistStart" type="button">
           Get started
         </button>
       </div>
 
       <div class="panel" style="margin-top:14px">
-        <h3>What artists will be able to do</h3>
+        <h3>Artist tools</h3>
 
         <div class="divider"></div>
 
-        <p>• Create an artist profile</p>
-        <p style="margin-top:10px">• Upload audio and cover artwork</p>
-        <p style="margin-top:10px">• Add release details and credits</p>
-        <p style="margin-top:10px">• Declare music rights and ownership</p>
-        <p style="margin-top:10px">• Manage releases and view statistics</p>
+        <p>Create an artist profile</p>
+        <p style="margin-top:10px">Upload authorised audio and artwork</p>
+        <p style="margin-top:10px">Add release details and credits</p>
+        <p style="margin-top:10px">Declare music rights and ownership</p>
+        <p style="margin-top:10px">Manage releases and statistics</p>
       </div>
     `;
 
-    page.querySelector("#artistStart").addEventListener("click", () => {
+    page.querySelector("#artistStart")?.addEventListener("click", () => {
       ResonaUtils.showMessage(
-        "Artist registration needs the backend and secure accounts."
+        "Artist registration is not connected yet. Secure accounts and the publishing API must be implemented first."
       );
     });
   }
@@ -1049,69 +1580,182 @@ const ResonaArtist = {
 
 
 /* =========================================================
-   12. MUSIC PLAYER
+   14. NAVIGATION
+   ========================================================= */
+
+const ResonaNavigation = {
+  pages: [
+    "home",
+    "explore",
+    "search",
+    "library",
+    "reset",
+    "artist"
+  ],
+
+  show(name) {
+    const pageName = String(name || "").toLowerCase();
+
+    if (!this.pages.includes(pageName)) {
+      ResonaUtils.showMessage("That page is not available.");
+      return;
+    }
+
+    const page = ResonaUtils.element("page-" + pageName);
+
+    if (!page) {
+      ResonaUtils.showMessage(
+        "The " + pageName + " page is not present in index.html yet."
+      );
+
+      return;
+    }
+
+    document.querySelectorAll(".page").forEach(item => {
+      item.classList.toggle("active", item === page);
+    });
+
+    document.querySelectorAll("nav button").forEach(button => {
+      const matches =
+        button.dataset.page === pageName ||
+        button.getAttribute("onclick")?.includes(
+          "'" + pageName + "'"
+        );
+
+      button.classList.toggle("on", Boolean(matches));
+    });
+
+    Resona.state.currentPage = pageName;
+
+    ResonaUtils.saveJSON("lastPage", pageName);
+
+    const main = ResonaUtils.element("main");
+
+    if (main) {
+      main.scrollTop = 0;
+    }
+
+    Resona.renderCurrentPage();
+  }
+};
+
+
+/* =========================================================
+   15. AUDIO PLAYER
    ========================================================= */
 
 const ResonaPlayer = {
   async play(trackOrId, queue = null) {
     const track = typeof trackOrId === "object"
-      ? trackOrId
+      ? ResonaCatalogue.findTrack(trackOrId.id) || trackOrId
       : ResonaCatalogue.findTrack(trackOrId);
 
     if (!track) {
-      ResonaUtils.showMessage(
-        "This track is not available in the catalogue.",
-        "error"
-      );
-
+      ResonaUtils.showMessage("Track not found.", "error");
       return false;
     }
 
     if (!Resona.config.enableAudioPlayback) {
       ResonaUtils.showMessage(
-        "Audio playback is not connected yet. The real audio source must be configured first."
+        "Audio playback is currently disabled."
       );
 
       return false;
     }
 
-    if (!track.audioUrl || track.rightsConfirmed !== true) {
+    if (
+      !track.audioUrl ||
+      track.rightsConfirmed !== true ||
+      track.streamAllowed !== true
+    ) {
       ResonaUtils.showMessage(
-        "This track does not have a verified, authorised audio source.",
+        "This track does not have a verified, authorised streaming source.",
         "error"
       );
 
       return false;
     }
 
+    if (queue) {
+      Resona.state.queue = queue
+        .map(item => ResonaCatalogue.findTrack(item.id))
+        .filter(Boolean);
+
+      Resona.state.queueIndex = Resona.state.queue.findIndex(
+        item => item.id === track.id
+      );
+    } else if (
+      !Resona.state.queue.length ||
+      !Resona.state.queue.some(item => item.id === track.id)
+    ) {
+      Resona.state.queue = [track];
+      Resona.state.queueIndex = 0;
+    } else {
+      Resona.state.queueIndex = Resona.state.queue.findIndex(
+        item => item.id === track.id
+      );
+    }
+
+    this.stopAudio();
+
     try {
-      if (queue) {
-        Resona.state.queue = [...queue];
-        Resona.state.queueIndex = Resona.state.queue.findIndex(
-          item => String(item.id) === String(track.id)
-        );
-      } else if (!Resona.state.queue.length) {
-        Resona.state.queue = [track];
-        Resona.state.queueIndex = 0;
-      }
-
-      this.stopAudio();
-
       const audio = new Audio();
 
       audio.preload = "metadata";
       audio.src = track.audioUrl;
 
-      audio.addEventListener("timeupdate", () => {
-        Resona.state.audioProgress = audio.currentTime;
-        Resona.state.audioDuration = audio.duration || 0;
+      audio.addEventListener("loadedmetadata", () => {
+        if (Resona.state.currentAudio !== audio) return;
+
+        Resona.state.audioDuration =
+          Number.isFinite(audio.duration)
+            ? audio.duration
+            : track.duration;
+
         this.updateProgress();
+        this.updateTime();
+      });
+
+      audio.addEventListener("timeupdate", () => {
+        if (Resona.state.currentAudio !== audio) return;
+
+        Resona.state.audioProgress = audio.currentTime;
+
+        if (Number.isFinite(audio.duration)) {
+          Resona.state.audioDuration = audio.duration;
+        }
+
+        this.updateProgress();
+        this.updateTime();
+      });
+
+      audio.addEventListener("play", () => {
+        if (Resona.state.currentAudio !== audio) return;
+
+        Resona.state.isPlaying = true;
+        this.updateButtons();
+      });
+
+      audio.addEventListener("pause", () => {
+        if (Resona.state.currentAudio !== audio) return;
+
+        Resona.state.isPlaying = false;
+        this.updateButtons();
       });
 
       audio.addEventListener("ended", () => {
+        if (Resona.state.currentAudio !== audio) return;
+
         if (Resona.state.repeatMode === "one") {
           audio.currentTime = 0;
-          audio.play().catch(() => {});
+
+          audio.play().catch(() => {
+            ResonaUtils.showMessage(
+              "Could not restart this track.",
+              "error"
+            );
+          });
+
           return;
         }
 
@@ -1119,14 +1763,24 @@ const ResonaPlayer = {
       });
 
       audio.addEventListener("error", () => {
+        if (Resona.state.currentAudio !== audio) return;
+
+        Resona.state.isPlaying = false;
+        this.updateButtons();
+
         ResonaUtils.showMessage(
-          "Unable to play this audio source.",
+          "The audio source could not be played. Check its URL, permissions and server configuration.",
           "error"
         );
       });
 
       Resona.state.currentAudio = audio;
       Resona.state.currentTrack = track;
+      Resona.state.audioProgress = 0;
+      Resona.state.audioDuration = track.duration || 0;
+
+      this.updateInterface();
+      this.updateButtons();
 
       await audio.play();
 
@@ -1134,17 +1788,17 @@ const ResonaPlayer = {
 
       ResonaLibrary.recordRecentlyPlayed(track.id);
 
-      this.updateInterface();
       this.updateButtons();
 
       return true;
     } catch (error) {
-      console.error("Resona playback error:", error);
+      console.error("Resona playback failed:", error);
 
       Resona.state.isPlaying = false;
+      this.updateButtons();
 
       ResonaUtils.showMessage(
-        "Playback could not start. Check the audio source and permissions.",
+        "Playback could not start. The audio source may be unavailable or blocked.",
         "error"
       );
 
@@ -1163,6 +1817,8 @@ const ResonaPlayer = {
 
     Resona.state.currentAudio = null;
     Resona.state.isPlaying = false;
+    Resona.state.audioProgress = 0;
+    Resona.state.audioDuration = 0;
   },
 
   async toggle() {
@@ -1178,7 +1834,10 @@ const ResonaPlayer = {
         await audio.play();
         Resona.state.isPlaying = true;
       } catch (error) {
-        ResonaUtils.showMessage("Unable to resume playback.", "error");
+        ResonaUtils.showMessage(
+          "Unable to resume playback.",
+          "error"
+        );
       }
     } else {
       audio.pause();
@@ -1196,13 +1855,13 @@ const ResonaPlayer = {
     let index = Resona.state.queueIndex;
 
     if (Resona.state.isShuffle && queue.length > 1) {
-      let nextIndex = index;
+      const possible = queue
+        .map((_, i) => i)
+        .filter(i => i !== index);
 
-      while (nextIndex === index) {
-        nextIndex = Math.floor(Math.random() * queue.length);
-      }
-
-      index = nextIndex;
+      index = possible[
+        Math.floor(Math.random() * possible.length)
+      ];
     } else {
       index++;
     }
@@ -1213,6 +1872,8 @@ const ResonaPlayer = {
       } else {
         this.stopAudio();
         this.updateButtons();
+        this.updateProgress();
+        this.updateTime();
         return;
       }
     }
@@ -1234,11 +1895,34 @@ const ResonaPlayer = {
 
     if (!queue.length) return;
 
-    let index = Math.max(0, Resona.state.queueIndex - 1);
+    let index = Resona.state.queueIndex - 1;
+
+    if (index < 0) {
+      if (Resona.state.repeatMode === "all") {
+        index = queue.length - 1;
+      } else {
+        index = 0;
+      }
+    }
 
     Resona.state.queueIndex = index;
 
     await this.play(queue[index], queue);
+  },
+
+  seek(value) {
+    const audio = Resona.state.currentAudio;
+
+    if (!audio || !Number.isFinite(audio.duration)) {
+      return;
+    }
+
+    const percentage = Math.max(
+      0,
+      Math.min(100, Number(value) || 0)
+    );
+
+    audio.currentTime = audio.duration * percentage / 100;
   },
 
   updateInterface() {
@@ -1248,7 +1932,6 @@ const ResonaPlayer = {
 
     ResonaUtils.setText("miniTitle", track.title);
     ResonaUtils.setText("miniArtist", track.artist);
-
     ResonaUtils.setText("npTitle", track.title);
     ResonaUtils.setText("npArtist", track.artist);
 
@@ -1257,35 +1940,119 @@ const ResonaPlayer = {
 
       if (!art) continue;
 
+      art.replaceChildren();
+
       if (track.artwork) {
-        art.style.backgroundImage = `url("${track.artwork}")`;
-        art.style.backgroundSize = "cover";
-        art.style.backgroundPosition = "center";
-        art.textContent = "";
+        const image = document.createElement("img");
+
+        image.src = track.artwork;
+        image.alt = "";
+        image.loading = "lazy";
+
+        Object.assign(image.style, {
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          borderRadius: "inherit"
+        });
+
+        art.appendChild(image);
       } else {
-        art.style.backgroundImage = "";
         art.textContent = "♫";
       }
     }
 
     const mini = ResonaUtils.element("mini");
 
-    if (mini) mini.style.display = "flex";
-
-    const bg = ResonaUtils.element("npbg");
-
-    if (bg) {
-      bg.style.background = track.artwork
-        ? `center / cover url("${track.artwork}")`
-        : "linear-gradient(135deg,#312e81,#134e4a)";
+    if (mini) {
+      mini.style.display = "flex";
     }
+
+    const background = ResonaUtils.element("npbg");
+
+    if (background) {
+      background.replaceChildren();
+
+      if (track.artwork) {
+        const image = document.createElement("img");
+
+        image.src = track.artwork;
+        image.alt = "";
+        image.setAttribute("aria-hidden", "true");
+
+        Object.assign(image.style, {
+          position: "absolute",
+          inset: "0",
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          opacity: ".22",
+          filter: "blur(35px)",
+          transform: "scale(1.15)",
+          pointerEvents: "none"
+        });
+
+        background.appendChild(image);
+      }
+    }
+
+    const likeButton = ResonaUtils.element("npLike");
+
+    if (likeButton) {
+      likeButton.textContent = ResonaLibrary.isLiked(track.id)
+        ? "♥"
+        : "♡";
+
+      likeButton.setAttribute(
+        "aria-pressed",
+        ResonaLibrary.isLiked(track.id) ? "true" : "false"
+      );
+    }
+
+    this.updateProgress();
+    this.updateTime();
   },
 
   updateButtons() {
     const symbol = Resona.state.isPlaying ? "⏸" : "▶";
 
     ResonaUtils.setText("miniPlay", symbol);
+
+    /*
+      The existing HTML may not have #npPlay.
+      Support either ID without requiring it.
+    */
+
     ResonaUtils.setText("npPlay", symbol);
+
+    const miniButton = ResonaUtils.element("miniPlay");
+    const npButton = ResonaUtils.element("npPlay");
+
+    if (miniButton) {
+      miniButton.setAttribute(
+        "aria-label",
+        Resona.state.isPlaying ? "Pause" : "Play"
+      );
+    }
+
+    if (npButton) {
+      npButton.setAttribute(
+        "aria-label",
+        Resona.state.isPlaying ? "Pause" : "Play"
+      );
+    }
+
+    const mini = ResonaUtils.element("mini");
+
+    if (mini) {
+      mini.classList.toggle("playing", Resona.state.isPlaying);
+    }
+
+    const disc = ResonaUtils.element("npDisc");
+
+    if (disc) {
+      disc.classList.toggle("playing", Resona.state.isPlaying);
+    }
   },
 
   updateProgress() {
@@ -1293,11 +2060,12 @@ const ResonaPlayer = {
     const duration = Resona.state.audioDuration;
 
     const percentage = duration > 0
-      ? Math.min(100, (current / duration) * 100)
+      ? Math.max(0, Math.min(100, current / duration * 100))
       : 0;
 
     const miniProgress = ResonaUtils.element("miniProgress");
     const npProgress = ResonaUtils.element("npProgress");
+    const seekBar = ResonaUtils.element("seekBar");
 
     if (miniProgress) {
       miniProgress.style.width = percentage + "%";
@@ -1306,33 +2074,77 @@ const ResonaPlayer = {
     if (npProgress) {
       npProgress.style.width = percentage + "%";
     }
+
+    if (seekBar) {
+      if (seekBar.type === "range") {
+        seekBar.value = String(percentage);
+      }
+
+      seekBar.setAttribute(
+        "aria-valuenow",
+        String(Math.round(percentage))
+      );
+    }
+  },
+
+  updateTime() {
+    ResonaUtils.setText(
+      "currentTime",
+      ResonaUtils.formatTime(Resona.state.audioProgress)
+    );
+
+    ResonaUtils.setText(
+      "duration",
+      ResonaUtils.formatTime(Resona.state.audioDuration)
+    );
   }
 };
 
 
 /* =========================================================
-   13. NOW PLAYING CONTROLS
+   16. NOW PLAYING CONTROLS
    ========================================================= */
 
 function openNowPlaying() {
-  ResonaUtils.element("np")?.classList.add("open");
+  const panel = ResonaUtils.element("np");
+
+  if (!panel) return;
+
+  panel.classList.add("open");
+  panel.setAttribute("aria-hidden", "false");
+
+  document.body.style.overflow = "hidden";
+
+  const closeButton = panel.querySelector(
+    '[onclick="closeNowPlaying()"]'
+  );
+
+  closeButton?.focus();
 }
 
 function closeNowPlaying() {
-  ResonaUtils.element("np")?.classList.remove("open");
+  const panel = ResonaUtils.element("np");
+
+  if (!panel) return;
+
+  panel.classList.remove("open");
+  panel.setAttribute("aria-hidden", "true");
+
+  document.body.style.overflow = "";
 }
 
 function playSong(id) {
-  const tracks = Resona.state.catalogue.tracks;
-
   const track = ResonaCatalogue.findTrack(id);
 
   if (!track) {
-    ResonaUtils.showMessage("Track not found.");
+    ResonaUtils.showMessage(
+      "No available track exists at this position."
+    );
+
     return;
   }
 
-  ResonaPlayer.play(track, tracks);
+  ResonaPlayer.play(track, Resona.state.catalogue.tracks);
 }
 
 function togglePlay() {
@@ -1347,141 +2159,103 @@ function prevSong() {
   ResonaPlayer.previous();
 }
 
+function toggleLikeCurrent() {
+  const track = Resona.state.currentTrack;
 
-/* =========================================================
-   14. SHARED TRACK RENDERER
-   ========================================================= */
-
-Resona.renderTrackRow = function(track) {
-  const liked = ResonaLibrary.isLiked(track.id);
-
-  return `
-    <div class="row" data-track-row="${ResonaUtils.escapeHTML(track.id)}">
-      <button
-        class="art"
-        data-play-track="${ResonaUtils.escapeHTML(track.id)}"
-        style="width:48px;height:48px"
-        aria-label="Play ${ResonaUtils.escapeHTML(track.title)}"
-      >
-        ${track.artwork
-          ? `<img src="${ResonaUtils.escapeHTML(track.artwork)}" alt="" loading="lazy">`
-          : "♫"}
-      </button>
-
-      <button class="m" data-play-track="${ResonaUtils.escapeHTML(track.id)}">
-        <div class="tt">${ResonaUtils.escapeHTML(track.title)}</div>
-        <div class="tag">${ResonaUtils.escapeHTML(track.artist)}</div>
-      </button>
-
-      <button
-        class="ic"
-        data-like-track="${ResonaUtils.escapeHTML(track.id)}"
-        aria-label="${liked ? "Unlike" : "Like"} ${ResonaUtils.escapeHTML(track.title)}"
-      >${liked ? "♥" : "♡"}</button>
-    </div>
-  `;
-};
-
-
-/* =========================================================
-   15. HOME PAGE
-   ========================================================= */
-
-const ResonaHome = {
-  render() {
-    const page = ResonaUtils.element("page-home");
-
-    if (!page) return;
-
-    const recent = ResonaLibrary.getRecentlyPlayed();
-    const tracks = Resona.state.catalogue.tracks;
-
-    page.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-        <div>
-          <div class="tag">Music without borders</div>
-          <h1>Resona</h1>
-        </div>
-
-        <button class="icon-button" id="homeSearch" aria-label="Search">
-          ⌕
-        </button>
-      </div>
-
-      <div class="hero glass">
-        <div>
-          <div class="tag">Discover something new</div>
-          <div style="font-weight:700;font-size:17px;margin:4px 0">
-            Your world of music
-          </div>
-          <div class="tag">Find sounds from every continent.</div>
-        </div>
-
-        <button class="cta" id="homeExplore">Explore</button>
-      </div>
-
-      <div class="section-heading">
-        <h2>Recently played</h2>
-      </div>
-
-      <div class="hs" id="recent"></div>
-
-      <div class="section-heading">
-        <h2>Available music</h2>
-      </div>
-
-      <div id="recommended"></div>
-    `;
-
-    page.querySelector("#homeSearch").addEventListener("click", () => {
-      ResonaNavigation.show("search");
-    });
-
-    page.querySelector("#homeExplore").addEventListener("click", () => {
-      ResonaNavigation.show("explore");
-    });
-
-    const recentEl = page.querySelector("#recent");
-
-    recentEl.innerHTML = recent.length
-      ? recent.map(track => `
-          <button class="card" data-play-track="${ResonaUtils.escapeHTML(track.id)}">
-            <div class="art">
-              ${track.artwork
-                ? `<img src="${ResonaUtils.escapeHTML(track.artwork)}" alt="" loading="lazy">`
-                : "♫"}
-            </div>
-            <div class="tt">${ResonaUtils.escapeHTML(track.title)}</div>
-            <div class="tag">${ResonaUtils.escapeHTML(track.artist)}</div>
-          </button>
-        `).join("")
-      : `
-          <div class="empty-state" style="width:100%">
-            <p class="tag">Your listening history will appear here.</p>
-          </div>
-        `;
-
-    page.querySelector("#recommended").innerHTML = tracks.length
-      ? tracks.map(track => Resona.renderTrackRow(track)).join("")
-      : `
-          <div class="empty-state">
-            <div class="symbol">♫</div>
-            <p>The Resona catalogue is not connected yet.</p>
-            <p class="tag" style="margin-top:6px">
-              No fictional songs are being presented as real releases.
-            </p>
-          </div>
-        `;
+  if (!track) {
+    ResonaUtils.showMessage("Choose a track first.");
+    return;
   }
-};
+
+  const liked = ResonaLibrary.toggleLike(track.id);
+
+  const button = ResonaUtils.element("npLike");
+
+  if (button) {
+    button.textContent = liked ? "♥" : "♡";
+    button.setAttribute("aria-pressed", liked ? "true" : "false");
+  }
+
+  ResonaUtils.showMessage(
+    liked ? "Added to liked songs." : "Removed from liked songs.",
+    "success"
+  );
+}
 
 
 /* =========================================================
-   16. GLOBAL EVENT DELEGATION
+   17. SHUFFLE AND REPEAT
+   ========================================================= */
+
+function toggleShuffle() {
+  Resona.state.isShuffle = !Resona.state.isShuffle;
+
+  const button = ResonaUtils.element("shuffleButton");
+
+  if (button) {
+    button.classList.toggle("on", Resona.state.isShuffle);
+    button.setAttribute(
+      "aria-pressed",
+      Resona.state.isShuffle ? "true" : "false"
+    );
+  }
+
+  ResonaUtils.showMessage(
+    Resona.state.isShuffle ? "Shuffle enabled." : "Shuffle disabled."
+  );
+}
+
+function cycleRepeat() {
+  const modes = ["off", "all", "one"];
+
+  const current = modes.indexOf(Resona.state.repeatMode);
+
+  Resona.state.repeatMode = modes[(current + 1) % modes.length];
+
+  const button = ResonaUtils.element("repeatButton");
+
+  if (button) {
+    button.classList.toggle(
+      "on",
+      Resona.state.repeatMode !== "off"
+    );
+
+    button.textContent =
+      Resona.state.repeatMode === "one"
+        ? "↻¹"
+        : "↻";
+
+    button.setAttribute(
+      "aria-label",
+      "Repeat " + Resona.state.repeatMode
+    );
+
+    button.setAttribute(
+      "aria-pressed",
+      Resona.state.repeatMode !== "off" ? "true" : "false"
+    );
+  }
+
+  const labels = {
+    off: "Repeat off.",
+    all: "Repeat all enabled.",
+    one: "Repeat current track enabled."
+  };
+
+  ResonaUtils.showMessage(labels[Resona.state.repeatMode]);
+}
+
+
+/* =========================================================
+   18. EVENT DELEGATION
    ========================================================= */
 
 document.addEventListener("click", event => {
-  const playButton = event.target.closest("[data-play-track]");
+  const target = event.target;
+
+  if (!(target instanceof Element)) return;
+
+  const playButton = target.closest("[data-play-track]");
 
   if (playButton) {
     event.preventDefault();
@@ -1496,7 +2270,7 @@ document.addEventListener("click", event => {
     return;
   }
 
-  const likeButton = event.target.closest("[data-like-track]");
+  const likeButton = target.closest("[data-like-track]");
 
   if (likeButton) {
     event.preventDefault();
@@ -1510,14 +2284,168 @@ document.addEventListener("click", event => {
       liked ? "Added to liked songs." : "Removed from liked songs.",
       "success"
     );
-
-    return;
   }
 });
 
 
 /* =========================================================
-   17. PAGE RENDERING
+   19. BACKEND API
+   ========================================================= */
+
+const ResonaAPI = {
+  async request(path, options = {}) {
+    if (!Resona.config.apiBase) {
+      throw new Error("Resona API has not been configured.");
+    }
+
+    const base = Resona.config.apiBase.replace(/\/+$/, "");
+
+    const endpoint =
+      base + "/" + String(path).replace(/^\/+/, "");
+
+    const controller = new AbortController();
+
+    const timeout = setTimeout(
+      () => controller.abort(),
+      Resona.config.requestTimeout
+    );
+
+    try {
+      const response = await fetch(endpoint, {
+        ...options,
+
+        signal: options.signal || controller.signal,
+
+        headers: {
+          Accept: "application/json",
+          ...(options.headers || {})
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          "Resona API returned HTTP " + response.status
+        );
+      }
+
+      return await response.json();
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+
+  extractTracks(result) {
+    if (Array.isArray(result)) {
+      return result;
+    }
+
+    if (!result || typeof result !== "object") {
+      return null;
+    }
+
+    const candidates = [
+      result.tracks,
+      result.items,
+      result.results,
+      result.data
+    ];
+
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) {
+        return candidate;
+      }
+
+      if (candidate && typeof candidate === "object") {
+        if (Array.isArray(candidate.tracks)) {
+          return candidate.tracks;
+        }
+
+        if (Array.isArray(candidate.items)) {
+          return candidate.items;
+        }
+      }
+    }
+
+    return null;
+  },
+
+  async loadCatalogue() {
+    if (!Resona.config.apiBase) {
+      return [];
+    }
+
+    Resona.state.isLoadingCatalogue = true;
+    Resona.state.catalogueError = null;
+
+    Resona.renderCurrentPage();
+
+    try {
+      const result = await this.request("/tracks");
+      const tracks = this.extractTracks(result);
+
+      if (!Array.isArray(tracks)) {
+        throw new Error(
+          "The API response does not contain a valid tracks array."
+        );
+      }
+
+      ResonaCatalogue.setTracks(tracks);
+
+      Resona.state.catalogueError = null;
+
+      return Resona.state.catalogue.tracks;
+    } catch (error) {
+      Resona.state.catalogueError = error;
+
+      throw error;
+    } finally {
+      Resona.state.isLoadingCatalogue = false;
+
+      Resona.renderCurrentPage();
+    }
+  }
+};
+
+
+/* =========================================================
+   20. COMPATIBILITY FUNCTIONS
+   ========================================================= */
+
+function showPage(name, button) {
+  ResonaNavigation.show(name);
+
+  if (button) {
+    document.querySelectorAll("nav button").forEach(item => {
+      item.classList.toggle("on", item === button);
+    });
+  }
+}
+
+function doSearch(query) {
+  const input = ResonaUtils.element("searchInput");
+
+  if (input && query !== undefined) {
+    input.value = String(query);
+  }
+
+  Resona.state.searchQuery = String(
+    query ?? input?.value ?? ""
+  );
+
+  ResonaSearch.run(Resona.state.searchQuery);
+}
+
+function openReset() {
+  ResonaNavigation.show("reset");
+}
+
+function doReset() {
+  ResonaReset.findMusic();
+}
+
+
+/* =========================================================
+   21. RENDER CURRENT PAGE
    ========================================================= */
 
 Resona.renderCurrentPage = function() {
@@ -1538,107 +2466,144 @@ Resona.renderCurrentPage = function() {
       ResonaLibraryPage.render();
       break;
 
+    case "reset":
+      ResonaReset.render();
+      break;
+
     case "artist":
       ResonaArtist.render();
       break;
+
+    default:
+      ResonaHome.render();
   }
 };
 
 
 /* =========================================================
-   18. BACKEND CONNECTION FOUNDATION
+   22. CONNECT EXISTING PLAYER CONTROLS
    ========================================================= */
 
-const ResonaAPI = {
-  async request(path, options = {}) {
-    if (!Resona.config.apiBase) {
-      throw new Error(
-        "Resona API has not been configured yet."
-      );
-    }
+function bindPlayerControls() {
+  const mini = ResonaUtils.element("mini");
 
-    const base = Resona.config.apiBase.replace(/\/+$/, "");
+  const miniOpen = mini?.querySelector(".mini-open");
 
-    const endpoint = base + "/" + String(path).replace(/^\/+/, "");
+  if (miniOpen && !miniOpen.dataset.resonaBound) {
+    miniOpen.dataset.resonaBound = "true";
 
-    const response = await fetch(endpoint, {
-      ...options,
-      headers: {
-        Accept: "application/json",
-        ...(options.headers || {})
+    miniOpen.addEventListener("click", event => {
+      if (event.target.closest("button.ic")) return;
+
+      openNowPlaying();
+    });
+  }
+
+  const miniPlay = ResonaUtils.element("miniPlay");
+
+  if (miniPlay && !miniPlay.dataset.resonaBound) {
+    miniPlay.dataset.resonaBound = "true";
+
+    miniPlay.addEventListener("click", event => {
+      event.stopPropagation();
+      togglePlay();
+    });
+  }
+
+  const miniLike = ResonaUtils.element("miniLike");
+
+  if (miniLike && !miniLike.dataset.resonaBound) {
+    miniLike.dataset.resonaBound = "true";
+
+    miniLike.addEventListener("click", event => {
+      event.stopPropagation();
+
+      if (Resona.state.currentTrack) {
+        const liked = ResonaLibrary.toggleLike(
+          Resona.state.currentTrack.id
+        );
+
+        miniLike.textContent = liked ? "♥" : "♡";
       }
     });
-
-    if (!response.ok) {
-      throw new Error(
-        "Resona API returned HTTP " + response.status
-      );
-    }
-
-    return response.json();
-  },
-
-  async loadCatalogue() {
-    if (!Resona.config.apiBase) return [];
-
-    const result = await this.request("/tracks");
-
-    const tracks = Array.isArray(result)
-      ? result
-      : result.tracks;
-
-    if (!Array.isArray(tracks)) {
-      throw new Error("Unexpected catalogue response.");
-    }
-
-    ResonaCatalogue.setTracks(tracks);
-
-    return tracks;
   }
-};
 
+  const npLike = ResonaUtils.element("npLike");
 
-/* =========================================================
-   19. NAVIGATION COMPATIBILITY
-   ========================================================= */
+  if (npLike && !npLike.dataset.resonaBound) {
+    npLike.dataset.resonaBound = "true";
 
-function showPage(name, button) {
-  ResonaNavigation.show(name);
-
-  if (button) {
-    document.querySelectorAll("nav button").forEach(item => {
-      item.classList.toggle("on", item === button);
-    });
+    npLike.addEventListener("click", toggleLikeCurrent);
   }
-}
 
-function doSearch(query) {
-  ResonaSearch.run(query);
-}
+  const seekBar = ResonaUtils.element("seekBar");
 
-function openReset() {
-  ResonaUtils.showMessage(
-    "The Reset mood-discovery interface will be integrated into Explore."
+  if (seekBar && !seekBar.dataset.resonaBound) {
+    seekBar.dataset.resonaBound = "true";
+
+    if (seekBar.type === "range") {
+      seekBar.addEventListener("input", () => {
+        ResonaPlayer.seek(seekBar.value);
+      });
+    } else {
+      seekBar.addEventListener("click", event => {
+        const rect = seekBar.getBoundingClientRect();
+
+        if (!rect.width) return;
+
+        const percentage =
+          ((event.clientX - rect.left) / rect.width) * 100;
+
+        ResonaPlayer.seek(percentage);
+      });
+    }
+  }
+
+  /*
+    These controls are optional. They can be added to index.html
+    later without breaking this application core.
+  */
+
+  ResonaUtils.element("shuffleButton")?.addEventListener(
+    "click",
+    toggleShuffle
   );
-}
 
-function doReset() {
-  if (!Resona.state.selectedMood) {
-    ResonaUtils.showMessage("Choose a mood first.");
-    return;
-  }
-
-  ResonaUtils.showMessage(
-    "Mood-based recommendations require the connected catalogue."
+  ResonaUtils.element("repeatButton")?.addEventListener(
+    "click",
+    cycleRepeat
   );
 }
 
 
 /* =========================================================
-   20. INITIALISATION
+   23. KEYBOARD AND ACCESSIBILITY
    ========================================================= */
 
-function initResona() {
+function bindAccessibility() {
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape") {
+      const panel = ResonaUtils.element("np");
+
+      if (panel?.classList.contains("open")) {
+        closeNowPlaying();
+      }
+    }
+  });
+
+  const panel = ResonaUtils.element("np");
+
+  if (panel) {
+    panel.setAttribute("aria-hidden", "true");
+  }
+}
+
+
+/* =========================================================
+   24. INITIALISATION
+   ========================================================= */
+
+async function initResona() {
   ResonaLibrary.init();
 
   const main = ResonaUtils.element("main");
@@ -1651,61 +2616,64 @@ function initResona() {
     return;
   }
 
-  const requiredPages = [
-    "home",
-    "explore",
-    "search",
-    "library",
-    "artist"
-  ];
-
-  const missingPages = requiredPages.filter(
-    name => !ResonaUtils.element("page-" + name)
-  );
-
-  if (missingPages.length) {
-    console.warn(
-      "Resona pages still need to be added to index.html:",
-      missingPages.join(", ")
-    );
-  }
-
-  Resona.renderCurrentPage();
+  bindPlayerControls();
+  bindAccessibility();
 
   const savedPage = ResonaUtils.loadJSON("lastPage", "home");
 
-  if (requiredPages.includes(savedPage) &&
-      ResonaUtils.element("page-" + savedPage)) {
-    ResonaNavigation.show(savedPage);
+  const initialPage =
+    ResonaNavigation.pages.includes(savedPage) &&
+    ResonaUtils.element("page-" + savedPage)
+      ? savedPage
+      : "home";
+
+  Resona.state.currentPage = initialPage;
+
+  Resona.renderCurrentPage();
+
+  ResonaNavigation.show(initialPage);
+
+  /*
+    Hide Now Playing until the user opens it.
+  */
+
+  const panel = ResonaUtils.element("np");
+
+  if (panel) {
+    panel.classList.remove("open");
+    panel.setAttribute("aria-hidden", "true");
   }
 
-  // The API remains disconnected until a real endpoint is configured.
+  /*
+    Load real catalogue data only when an API URL is configured.
+  */
+
   if (Resona.config.apiBase) {
-    ResonaAPI.loadCatalogue().catch(error => {
-      console.error("Catalogue loading failed:", error);
+    try {
+      await ResonaAPI.loadCatalogue();
+    } catch (error) {
+      console.error("Resona catalogue loading failed:", error);
 
       ResonaUtils.showMessage(
-        "Could not load the music catalogue.",
+        "Could not load the music catalogue. Check the API configuration.",
         "error"
       );
-    });
+    }
   }
 
   console.info(
-    "Resona frontend initialised. Backend:",
-    Resona.config.apiBase ? "configured" : "not configured"
+    "Resona initialised.",
+    {
+      version: Resona.version,
+      apiConfigured: Boolean(Resona.config.apiBase),
+      trackCount: Resona.state.catalogue.tracks.length
+    }
   );
-}
-
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initResona);
-} else {
-  initResona();
 }
 
 
 /* =========================================================
-   21. PUBLIC APPLICATION INTERFACE
+   25. PUBLIC INTERFACE
    ========================================================= */
 
 window.Resona = Resona;
@@ -1713,17 +2681,39 @@ window.ResonaAPI = ResonaAPI;
 window.ResonaCatalogue = ResonaCatalogue;
 window.ResonaExplore = ResonaExplore;
 window.ResonaLibrary = ResonaLibrary;
+window.ResonaLibraryPage = ResonaLibraryPage;
 window.ResonaNavigation = ResonaNavigation;
 window.ResonaPlayer = ResonaPlayer;
 window.ResonaUtils = ResonaUtils;
 
+window.showPage = showPage;
 window.playSong = playSong;
 window.togglePlay = togglePlay;
 window.nextSong = nextSong;
 window.prevSong = prevSong;
+
 window.openNowPlaying = openNowPlaying;
 window.closeNowPlaying = closeNowPlaying;
-window.showPage = showPage;
+window.toggleLikeCurrent = toggleLikeCurrent;
+
+window.toggleShuffle = toggleShuffle;
+window.cycleRepeat = cycleRepeat;
+
 window.doSearch = doSearch;
 window.openReset = openReset;
 window.doReset = doReset;
+
+
+/* =========================================================
+   26. START
+   ========================================================= */
+
+if (document.readyState === "loading") {
+  document.addEventListener(
+    "DOMContentLoaded",
+    initResona,
+    { once: true }
+  );
+} else {
+  initResona();
+                              }
