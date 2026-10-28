@@ -1161,3 +1161,138 @@ nav span {
     font-size: 19px;
   }
 }
+
+
+/* =========================================================
+   RESONA — LAYOUT CORRECTIONS
+   ========================================================= */
+
+/* Prevent mobile viewport sizing problems */
+html,
+body {
+  width: 100%;
+  min-width: 0;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+#app {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+}
+
+#main {
+  height: 100%;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+
+/* Keep the mini-player contents aligned */
+#mini {
+  min-height: 62px;
+  isolation: isolate;
+}
+
+#mini .mini-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  overflow: hidden;
+}
+
+#mini .mini-open .art {
+  flex: 0 0 44px;
+}
+
+#mini .mini-open .m {
+  flex: 1;
+  min-width: 0;
+}
+
+#mini .mini-open .tt,
+#mini .mini-open .tag {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#mini > .ic {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 40px;
+  position: relative;
+  z-index: 2;
+}
+
+#mini .bar {
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 99px;
+}
+
+/* Keep navigation and mini-player above scrolling content */
+nav {
+  min-height: var(--nav-height);
+  padding-bottom: max(
+    6px,
+    env(safe-area-inset-bottom, 0px)
+  );
+}
+
+#mini {
+  bottom: calc(
+    var(--nav-height) +
+    env(safe-area-inset-bottom, 0px)
+  );
+}
+
+/* Improve the expanded player layout */
+#np {
+  height: 100vh;
+  height: 100dvh;
+  box-sizing: border-box;
+}
+
+#np[aria-hidden="true"] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+#np.open {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+#npArt {
+  flex-shrink: 0;
+}
+
+#lyrics {
+  min-height: 0;
+}
+
+/* Prevent small screens from squeezing player controls */
+@media (max-width: 360px) {
+  #mini {
+    gap: 5px;
+    padding: 7px;
+  }
+
+  #mini > .ic {
+    flex-basis: 32px;
+    width: 32px;
+  }
+
+  #mini .mini-open {
+    gap: 7px;
+  }
+}
