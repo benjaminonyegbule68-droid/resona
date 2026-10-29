@@ -1,17 +1,18 @@
 /* =========================================================
    RESONA — MUSIC DISCOVERY MODULE
    File: js/discovery.js
+   Version: 2.0.0
 
    Responsibilities:
-   - Global music discovery
-   - Genre and mood filtering
-   - Regional and country discovery
-   - Trending and featured tracks
+   - Music discovery and catalogue loading
+   - Featured and trending tracks
+   - Genre, mood, country, region and language filters
    - Personalized recommendations
-   - Recently played discovery
-   - Artist and album discovery
-   - Safe integration with ResonaAPI
-   - Graceful handling of missing backend endpoints
+   - Recently played tracks
+   - Artist, album and playlist discovery
+   - Resilient API integration
+   - Consistent response normalization
+   - Discovery events and state reporting
 
    No fabricated catalogue data is generated.
    ========================================================= */
@@ -52,10 +53,6 @@
 
     const listeners = new Map();
 
-    /* =====================================================
-       EVENTS
-       ===================================================== */
-
     const EVENTS = Object.freeze({
       READY: "resona:discovery-ready",
       LOADING: "resona:discovery-loading",
@@ -64,22 +61,35 @@
       ERROR: "resona:discovery-error"
     });
 
+    /* =====================================================
+       EVENTS
+       ===================================================== */
+
     function emit(name, detail = {}) {
       const payload = {
         ...detail,
         state: getState()
       };
 
-      global.dispatchEvent(
-        new CustomEvent(name, {
-          detail: payload
-        })
-      );
+      try {
+        if (typeof global.CustomEvent === "function") {
+          global.dispatchEvent(
+            new global.CustomEvent(name, {
+              detail: payload
+            })
+          );
+        }
+      } catch (error) {
+        console.warn(
+          "[Resona Discovery] Event dispatch failed:",
+          error
+        );
+      }
 
       const callbacks = listeners.get(name);
 
       if (callbacks) {
-        callbacks.forEach(callback => {
+        for (const callback of callbacks) {
           try {
             callback(payload);
           } catch (error) {
@@ -88,7 +98,7 @@
               error
             );
           }
-        });
+        }
       }
     }
 
@@ -105,22 +115,30 @@
 
       listeners.get(name).add(callback);
 
-      return () => {
+      return function unsubscribe() {
         listeners.get(name)?.delete(callback);
       };
     }
 
     /* =====================================================
-       UTILITIES
+       NORMALIZATION UTILITIES
        ===================================================== */
 
     function normalizeText(value) {
-      return String(value || "")
+      if (value === null || value === undefined) {
+        return "";
+      }
+
+      return String(value)
+        .normalize("NFKC")
         .trim()
         .toLowerCase();
     }
 
-    function normalizeLimit(value, fallback = DEFAULT_LIMIT) {
+    function normalizeLimit(
+      value,
+      fallback = DEFAULT_LIMIT
+    ) {
       const number = Number(value);
 
       if (!Number.isFinite(number)) {
@@ -133,10 +151,80 @@
       );
     }
 
+    function normalizeOffset(value) {
+      const number = Number(value);
+
+      return Number.isFinite(number)
+        ? Math.max(0, Math.floor(number))
+        : 0;
+    }
+
     function normalizeArray(value) {
       return Array.isArray(value)
-        ? value.filter(Boolean)
+        ? value.filter(item => (
+            item !== null &&
+            item !== undefined
+          ))
         : [];
+    }
+
+    function normalizeCollection(response) {
+      if (Array.isArray(response)) {
+        return response;
+      }
+
+      if (!response || typeof response !== "object") {
+        return [];
+      }
+
+      const possibleCollections = [
+        response.items,
+        response.results,
+        response.tracks,
+        response.artists,
+        response.albums,
+        response.playlists,
+        response.data
+      ];
+
+      for (const collection of possibleCollections) {
+        if (Array.isArray(collection)) {
+          return collection;
+        }
+      }
+
+      if (
+        response.data &&
+        typeof response.data === "object"
+      ) {
+        const nested = normalizeCollection(response.data);
+
+        if (nested.length) {
+          return nested;
+        }
+      }
+
+      return [];
+    }
+
+    function getEntityId(item) {
+      if (!item || typeof item !== "object") {
+        return "";
+      }
+
+      return String(
+        item.id ??
+        item.track_id ??
+        item.trackId ??
+        item.artist_id ??
+        item.artistId ??
+        item.album_id ??
+        item.albumId ??
+        item.playlist_id ??
+        item.playlistId ??
+        item.uuid ??
+        ""
+      ).trim();
     }
 
     function uniqueById(items) {
@@ -147,14 +235,12 @@
           return false;
         }
 
-        const id = String(
-          item.id ||
-          item.track_id ||
-          item.artist_id ||
-          item.album_id ||
-          ""
-        ).trim();
+        const id = getEntityId(item);
 
+        /*
+         * Keep entities without IDs rather than silently
+         * discarding potentially valid API records.
+         */
         if (!id) {
           return true;
         }
@@ -170,12 +256,7 @@
     }
 
     function getTrackId(track) {
-      return String(
-        track?.id ||
-        track?.track_id ||
-        track?.trackId ||
-        ""
-      ).trim();
+      return getEntityId(track);
     }
 
     function getTrackTitle(track) {
@@ -189,11 +270,11 @@
     function getArtistName(track) {
       if (Array.isArray(track?.artists)) {
         return track.artists
-          .map(artist => {
-            return typeof artist === "string"
+          .map(artist => (
+            typeof artist === "string"
               ? artist
-              : artist?.name || "";
-          })
+              : artist?.name || ""
+          ))
           .filter(Boolean)
           .join(", ");
       }
@@ -214,34 +295,47 @@
       );
     }
 
-    function getTrackGenres(track) {
-      const genres = track?.genres ??
-        track?.genre ??
-        [];
+    function normalizeStringList(value) {
+      if (Array.isArray(value)) {
+        return value
+          .flatMap(item => {
+            if (typeof item === "string") {
+              return item.split(",");
+            }
 
-      if (Array.isArray(genres)) {
-        return genres.map(normalizeText);
+            if (item && typeof item === "object") {
+              return [
+                item.name ||
+                item.title ||
+                item.value ||
+                ""
+              ];
+            }
+
+            return [];
+          })
+          .map(normalizeText)
+          .filter(Boolean);
       }
 
-      return String(genres)
+      return String(value || "")
         .split(",")
         .map(normalizeText)
         .filter(Boolean);
     }
 
+    function getTrackGenres(track) {
+      return normalizeStringList(
+        track?.genres ??
+        track?.genre
+      );
+    }
+
     function getTrackMoods(track) {
-      const moods = track?.moods ??
-        track?.mood ??
-        [];
-
-      if (Array.isArray(moods)) {
-        return moods.map(normalizeText);
-      }
-
-      return String(moods)
-        .split(",")
-        .map(normalizeText)
-        .filter(Boolean);
+      return normalizeStringList(
+        track?.moods ??
+        track?.mood
+      );
     }
 
     function getTrackCountry(track) {
@@ -276,11 +370,12 @@
         track?.popularity ??
         track?.popularity_score ??
         track?.play_count ??
+        track?.plays ??
         0
       );
 
       return Number.isFinite(value)
-        ? value
+        ? Math.max(0, value)
         : 0;
     }
 
@@ -296,6 +391,20 @@
       return Number.isFinite(timestamp)
         ? timestamp
         : 0;
+    }
+
+    function isFeatured(track) {
+      return (
+        track?.featured === true ||
+        track?.is_featured === true
+      );
+    }
+
+    function isTrending(track) {
+      return (
+        track?.trending === true ||
+        track?.is_trending === true
+      );
     }
 
     /* =====================================================
@@ -317,7 +426,10 @@
       );
     }
 
-    async function fetchCollection(methodName, options = {}) {
+    async function fetchCollection(
+      methodName,
+      options = {}
+    ) {
       const api = getAPI();
 
       if (
@@ -327,55 +439,43 @@
         return [];
       }
 
-      const response = await api[methodName](options);
+      const response = await api[methodName]({
+        limit: normalizeLimit(
+          options.limit,
+          DEFAULT_LIMIT
+        ),
+        offset: normalizeOffset(options.offset),
+        signal: options.signal
+      });
 
-      if (Array.isArray(response)) {
-        return response;
-      }
-
-      if (Array.isArray(response?.items)) {
-        return response.items;
-      }
-
-      if (Array.isArray(response?.results)) {
-        return response.results;
-      }
-
-      if (Array.isArray(response?.data)) {
-        return response.data;
-      }
-
-      return [];
+      return uniqueById(
+        normalizeCollection(response)
+      );
     }
 
     async function loadTracks(options = {}) {
       const api = getAPI();
 
       if (api && typeof api.getTracks === "function") {
-        const result = await api.getTracks({
-          limit: normalizeLimit(options.limit),
-          offset: Math.max(
-            0,
-            Number(options.offset) || 0
+        const response = await api.getTracks({
+          limit: normalizeLimit(
+            options.limit,
+            DEFAULT_LIMIT
           ),
+          offset: normalizeOffset(options.offset),
           signal: options.signal
         });
 
-        return normalizeArray(
-          Array.isArray(result)
-            ? result
-            : result?.items ||
-              result?.results ||
-              result?.data
+        return uniqueById(
+          normalizeCollection(response)
         );
       }
 
       /*
-       * Supports migration from the original app.js.
-       * Existing in-memory tracks remain usable.
+       * Migration support for the original Resona app.
+       * No demo catalogue is created here.
        */
-
-      return getLocalTracks();
+      return uniqueById(getLocalTracks());
     }
 
     async function loadSearchResults(query, options = {}) {
@@ -388,22 +488,13 @@
         return [];
       }
 
-      const results = await api.search(query, options);
+      const response = await api.search(query, options);
 
-      if (Array.isArray(results)) {
-        return results;
-      }
-
-      return [
-        ...normalizeArray(results?.tracks),
-        ...normalizeArray(results?.artists),
-        ...normalizeArray(results?.albums),
-        ...normalizeArray(results?.playlists)
-      ];
+      return normalizeCollection(response);
     }
 
     /* =====================================================
-       GLOBAL MUSIC FILTERING
+       FILTERING
        ===================================================== */
 
     function matchesFilters(track, filters = state.filters) {
@@ -454,11 +545,15 @@
       }
 
       if (filters.explicit !== null) {
-        const explicit = Boolean(
+        const explicitValue =
           track.explicit ??
           track.is_explicit ??
-          false
-        );
+          false;
+
+        const explicit =
+          explicitValue === true ||
+          explicitValue === 1 ||
+          normalizeText(explicitValue) === "true";
 
         if (explicit !== filters.explicit) {
           return false;
@@ -468,7 +563,10 @@
       return true;
     }
 
-    function filterTracks(tracks, filters = state.filters) {
+    function filterTracks(
+      tracks,
+      filters = state.filters
+    ) {
       return normalizeArray(tracks)
         .filter(track => matchesFilters(track, filters));
     }
@@ -504,9 +602,7 @@
       state.filters = next;
 
       emit(EVENTS.FILTER_CHANGE, {
-        filters: {
-          ...state.filters
-        }
+        filters: getFilters()
       });
 
       return getFilters();
@@ -536,7 +632,7 @@
     }
 
     /* =====================================================
-       DISCOVERY COLLECTIONS
+       DISCOVERY REFRESH
        ===================================================== */
 
     async function refresh(options = {}) {
@@ -552,6 +648,14 @@
       });
 
       try {
+        /*
+         * Tracks are the core discovery collection.
+         * If this request fails, report the error.
+         *
+         * Artist, album and playlist requests are handled
+         * separately so one optional endpoint cannot break
+         * the entire discovery screen.
+         */
         const tracks = await loadTracks({
           limit: normalizeLimit(
             options.limit,
@@ -564,44 +668,64 @@
         state.tracks = uniqueById(tracks);
 
         state.featured = state.tracks
-          .filter(track => {
-            return (
-              track.featured === true ||
-              track.is_featured === true
-            );
-          });
+          .filter(isFeatured);
 
         state.trending = state.tracks
-          .filter(track => {
-            return (
-              track.trending === true ||
-              track.is_trending === true
-            );
-          })
+          .filter(isTrending)
           .sort((a, b) => {
             return getPopularity(b) - getPopularity(a);
           });
 
-        state.artists = uniqueById(
-          await fetchCollection("getArtists", {
-            limit: normalizeLimit(options.limit, 50),
-            signal: options.signal
+        const optionalCollections = [
+          {
+            key: "artists",
+            method: "getArtists"
+          },
+          {
+            key: "albums",
+            method: "getAlbums"
+          },
+          {
+            key: "playlists",
+            method: "getPlaylists"
+          }
+        ];
+
+        const results = await Promise.all(
+          optionalCollections.map(async item => {
+            try {
+              return {
+                key: item.key,
+                items: await fetchCollection(
+                  item.method,
+                  {
+                    limit: normalizeLimit(
+                      options.limit,
+                      50
+                    ),
+                    signal: options.signal
+                  }
+                ),
+                error: null
+              };
+            } catch (error) {
+              console.warn(
+                `[Resona Discovery] ${item.key} unavailable:`,
+                error
+              );
+
+              return {
+                key: item.key,
+                items: [],
+                error
+              };
+            }
           })
         );
 
-        state.albums = uniqueById(
-          await fetchCollection("getAlbums", {
-            limit: normalizeLimit(options.limit, 50),
-            signal: options.signal
-          })
-        );
-
-        state.playlists = uniqueById(
-          await fetchCollection("getPlaylists", {
-            limit: normalizeLimit(options.limit, 50),
-            signal: options.signal
-          })
-        );
+        results.forEach(result => {
+          state[result.key] = result.items;
+        });
 
         state.lastUpdated = new Date().toISOString();
         state.initialized = true;
@@ -618,7 +742,8 @@
         return getState();
       } catch (error) {
         state.error = {
-          message: error?.message ||
+          message:
+            error?.message ||
             "Unable to load music discovery data."
         };
 
@@ -636,50 +761,66 @@
       }
     }
 
+    /* =====================================================
+       COLLECTION GETTERS
+       ===================================================== */
+
+    function getTracks(options = {}) {
+      const limit = normalizeLimit(options.limit);
+      const offset = normalizeOffset(options.offset);
+
+      let tracks = filterTracks(state.tracks);
+
+      if (options.sort === "popular") {
+        tracks = tracks.slice().sort(
+          (a, b) => getPopularity(b) - getPopularity(a)
+        );
+      } else if (options.sort === "recent") {
+        tracks = tracks.slice().sort(
+          (a, b) => getReleaseTimestamp(b) -
+            getReleaseTimestamp(a)
+        );
+      }
+
+      return tracks.slice(offset, offset + limit);
+    }
+
     function getFeatured(options = {}) {
       const limit = normalizeLimit(options.limit);
 
-      return filterTracks(
-        state.featured
-      ).slice(0, limit);
+      return filterTracks(state.featured)
+        .slice(0, limit);
     }
 
     function getTrending(options = {}) {
       const limit = normalizeLimit(options.limit);
 
-      return filterTracks(
-        state.trending
-      ).slice(0, limit);
-    }
-
-    function getTracks(options = {}) {
-      const limit = normalizeLimit(options.limit);
-      const offset = Math.max(
-        0,
-        Number(options.offset) || 0
-      );
-
-      return filterTracks(
-        state.tracks
-      ).slice(offset, offset + limit);
+      return filterTracks(state.trending)
+        .slice(0, limit);
     }
 
     function getArtists(options = {}) {
-      const limit = normalizeLimit(options.limit);
-
-      return state.artists.slice(0, limit);
+      return state.artists.slice(
+        normalizeOffset(options.offset),
+        normalizeOffset(options.offset) +
+          normalizeLimit(options.limit)
+      );
     }
 
     function getAlbums(options = {}) {
-      const limit = normalizeLimit(options.limit);
-
-      return state.albums.slice(0, limit);
+      return state.albums.slice(
+        normalizeOffset(options.offset),
+        normalizeOffset(options.offset) +
+          normalizeLimit(options.limit)
+      );
     }
 
     function getPlaylists(options = {}) {
-      const limit = normalizeLimit(options.limit);
-
-      return state.playlists.slice(0, limit);
+      return state.playlists.slice(
+        normalizeOffset(options.offset),
+        normalizeOffset(options.offset) +
+          normalizeLimit(options.limit)
+      );
     }
 
     /* =====================================================
@@ -718,10 +859,18 @@
       ) {
         try {
           return normalizeArray(
-            library.getHistory()
+            library.getHistory({
+              tracksOnly: true
+            })
           );
         } catch {
-          return [];
+          try {
+            return normalizeArray(
+              library.getHistory()
+            );
+          } catch {
+            return [];
+          }
         }
       }
 
@@ -740,7 +889,20 @@
 
       const preferenceCounts = new Map();
 
-      [...liked, ...history].forEach(track => {
+      /*
+       * Liked tracks receive greater weight than tracks
+       * merely present in listening history.
+       */
+      liked.forEach(track => {
+        getTrackGenres(track).forEach(genre => {
+          preferenceCounts.set(
+            genre,
+            (preferenceCounts.get(genre) || 0) + 3
+          );
+        });
+      });
+
+      history.forEach(track => {
         getTrackGenres(track).forEach(genre => {
           preferenceCounts.set(
             genre,
@@ -749,33 +911,64 @@
         });
       });
 
-      const excluded = new Set(
-        [...liked, ...history]
-          .map(getTrackId)
-          .filter(Boolean)
+      const likedIds = new Set(
+        liked.map(getTrackId).filter(Boolean)
       );
+
+      const historyCounts = new Map();
+
+      history.forEach(track => {
+        const id = getTrackId(track);
+
+        if (id) {
+          historyCounts.set(
+            id,
+            (historyCounts.get(id) || 0) + 1
+          );
+        }
+      });
 
       const candidates = filterTracks(
         state.tracks
-      ).filter(track => {
-        const id = getTrackId(track);
-
-        return !id || !excluded.has(id);
-      });
+      );
 
       const ranked = candidates.map(track => {
+        const id = getTrackId(track);
+
         const genreScore = getTrackGenres(track)
           .reduce((total, genre) => {
             return total +
               (preferenceCounts.get(genre) || 0);
           }, 0);
 
-        const popularityScore = getPopularity(track);
+        const likedScore = id && likedIds.has(id)
+          ? 20
+          : 0;
+
+        /*
+         * Slightly favor familiar tracks, but do not exclude
+         * them entirely. Recommendations can include tracks
+         * the listener has heard before.
+         */
+        const familiarityScore = id
+          ? Math.min(
+              10,
+              (historyCounts.get(id) || 0) * 2
+            )
+          : 0;
+
+        const popularityScore = Math.min(
+          getPopularity(track),
+          100
+        );
 
         return {
           track,
-          score: genreScore * 10 +
-            Math.min(popularityScore, 100)
+          score:
+            genreScore * 10 +
+            likedScore +
+            familiarityScore +
+            popularityScore
         };
       });
 
@@ -801,77 +994,99 @@
     }
 
     /* =====================================================
-       GENRES, MOODS, REGIONS AND LANGUAGES
+       AVAILABLE FILTER VALUES
        ===================================================== */
 
-    function getAvailableGenres() {
-      const genres = new Set();
+    function collectAvailableValues(getter) {
+      const values = new Set();
 
       state.tracks.forEach(track => {
-        getTrackGenres(track).forEach(genre => {
-          if (genre) {
-            genres.add(genre);
-          }
-        });
+        const result = getter(track);
+
+        if (Array.isArray(result)) {
+          result.forEach(value => {
+            if (value) {
+              values.add(value);
+            }
+          });
+        } else if (result) {
+          values.add(result);
+        }
       });
 
-      return [...genres].sort();
+      return [...values].sort();
+    }
+
+    function getAvailableGenres() {
+      return collectAvailableValues(getTrackGenres);
     }
 
     function getAvailableMoods() {
-      const moods = new Set();
-
-      state.tracks.forEach(track => {
-        getTrackMoods(track).forEach(mood => {
-          if (mood) {
-            moods.add(mood);
-          }
-        });
-      });
-
-      return [...moods].sort();
+      return collectAvailableValues(getTrackMoods);
     }
 
     function getAvailableCountries() {
-      const countries = new Set();
-
-      state.tracks.forEach(track => {
-        const country = getTrackCountry(track);
-
-        if (country) {
-          countries.add(country);
-        }
-      });
-
-      return [...countries].sort();
+      return collectAvailableValues(getTrackCountry);
     }
 
     function getAvailableRegions() {
-      const regions = new Set();
-
-      state.tracks.forEach(track => {
-        const region = getTrackRegion(track);
-
-        if (region) {
-          regions.add(region);
-        }
-      });
-
-      return [...regions].sort();
+      return collectAvailableValues(getTrackRegion);
     }
 
     function getAvailableLanguages() {
-      const languages = new Set();
+      return collectAvailableValues(getTrackLanguage);
+    }
 
-      state.tracks.forEach(track => {
-        const language = getTrackLanguage(track);
+    /* =====================================================
+       SEARCH HELPERS
+       ===================================================== */
 
-        if (language) {
-          languages.add(language);
+    async function search(query, options = {}) {
+      const normalizedQuery = String(
+        query || ""
+      ).trim();
+
+      if (!normalizedQuery) {
+        return [];
+      }
+
+      try {
+        const backendResults = await loadSearchResults(
+          normalizedQuery,
+          options
+        );
+
+        if (backendResults.length) {
+          return backendResults;
         }
-      });
+      } catch (error) {
+        console.warn(
+          "[Resona Discovery] Backend search failed:",
+          error
+        );
+      }
 
-      return [...languages].sort();
+      /*
+       * Local search only uses tracks already received
+       * from the real catalogue. It does not invent results.
+       */
+      const term = normalizeText(normalizedQuery);
+
+      return state.tracks.filter(track => {
+        const searchable = [
+          getTrackTitle(track),
+          getArtistName(track),
+          ...getTrackGenres(track),
+          ...getTrackMoods(track),
+          getTrackCountry(track),
+          getTrackRegion(track),
+          getTrackLanguage(track)
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        return searchable.includes(term);
+      });
     }
 
     /* =====================================================
@@ -882,6 +1097,7 @@
       return {
         initialized: state.initialized,
         loading: state.loading,
+
         error: state.error
           ? { ...state.error }
           : null,
@@ -890,6 +1106,9 @@
         artistCount: state.artists.length,
         albumCount: state.albums.length,
         playlistCount: state.playlists.length,
+
+        featuredCount: state.featured.length,
+        trendingCount: state.trending.length,
 
         lastUpdated: state.lastUpdated,
         filters: getFilters()
@@ -905,7 +1124,6 @@
 
       on,
       refresh,
-
       getState,
 
       getTracks,
@@ -928,7 +1146,9 @@
       getAvailableMoods,
       getAvailableCountries,
       getAvailableRegions,
-      getAvailableLanguages
+      getAvailableLanguages,
+
+      search
     });
   })();
 
