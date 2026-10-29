@@ -3,598 +3,1494 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Resona</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='none'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%23c4b5fd'/%3E%3Cstop offset='50%25' stop-color='%23a78bfa'/%3E%3Cstop offset='100%25' stop-color='%232dd4bf'/%3E%3C/linearGradient%3E%3ClinearGradient id='g2' x1='0.2' y1='0' x2='0.8' y2='1'%3E%3Cstop offset='0%25' stop-color='%23ddd6fe'/%3E%3Cstop offset='100%25' stop-color='%235eead4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='%2307070b'/%3E%3Ccircle cx='32' cy='32' r='22' stroke='url(%23g)' stroke-width='2.5' opacity='0.35'/%3E%3Ccircle cx='32' cy='32' r='15.5' stroke='url(%23g)' stroke-width='3' opacity='0.7'/%3E%3Ccircle cx='32' cy='32' r='7' fill='url(%23g2)'/%3E%3C/svg%3E">
+
+  <meta name="theme-color" content="#07070b">
+  <meta name="description" content="Discover music, explore artists, and build your personal music library with Resona.">
+
+  <title>Resona — Discover Your Sound</title>
+
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2307070b'/%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%23a78bfa' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='13' fill='none' stroke='%232dd4bf' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%23a78bfa'/%3E%3C/svg%3E">
+
   <style>
     :root {
       --bg: #07070b;
-      --s: rgba(255,255,255,.06);
-      --b: rgba(255,255,255,.1);
-      --tx: #f3f1fa;
-      --mu: #9b97b0;
-      --pu: #a78bfa;
-      --te: #2dd4bf;
+      --panel: #101017;
+      --surface: rgba(255,255,255,.055);
+      --surface-hover: rgba(255,255,255,.09);
+      --border: rgba(255,255,255,.1);
+      --text: #f3f1fa;
+      --muted: #9b97b0;
+      --purple: #a78bfa;
+      --teal: #2dd4bf;
+      --danger: #fb7185;
+      --radius: 18px;
       color-scheme: dark;
     }
-    * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
-    html, body { height: 100%; background: var(--bg); color: var(--tx); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html {
+      min-height: 100%;
+      scroll-behavior: smooth;
+    }
+
     body {
+      min-height: 100vh;
       background:
-        radial-gradient(600px 400px at 10% -5%, rgba(167,139,250,.22), transparent),
-        radial-gradient(500px 400px at 100% 10%, rgba(45,212,191,.14), transparent),
+        radial-gradient(
+          650px 420px at 5% -10%,
+          rgba(167,139,250,.18),
+          transparent 70%
+        ),
+        radial-gradient(
+          550px 400px at 100% 5%,
+          rgba(45,212,191,.12),
+          transparent 70%
+        ),
         var(--bg);
       background-attachment: fixed;
+      color: var(--text);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
     }
-    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
-    #app { max-width: 760px; margin: 0 auto; height: 100%; position: relative; }
-    #main { height: 100%; overflow-y: auto; padding: 18px 16px 200px; scroll-behavior: smooth; }
-    h1 { font-size: 26px; letter-spacing: -.5px; }
-    h2 { font-size: 18px; margin: 22px 0 10px; }
-    .tag { color: var(--mu); font-size: 13px; }
-    .glass {
-      background: var(--s);
-      border: 1px solid var(--b);
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-      border-radius: 18px;
+
+    button,
+    input,
+    select {
+      font: inherit;
     }
-    .art {
-      border-radius: 10px;
-      flex: none;
-      display: grid;
-      place-items: center;
-      font-weight: 700;
-      color: rgba(255,255,255,.85);
-      background: linear-gradient(135deg, #312e81, #134e4a);
+
+    button {
+      color: inherit;
+      background: none;
+      border: 0;
+      cursor: pointer;
     }
-    .row {
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible {
+      outline: 2px solid var(--teal);
+      outline-offset: 3px;
+    }
+
+    button:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
+    a {
+      color: var(--teal);
+      text-decoration: none;
+    }
+
+    img {
+      max-width: 100%;
+    }
+
+    #app {
+      width: 100%;
+      max-width: 1200px;
+      min-height: 100vh;
+      margin: 0 auto;
+    }
+
+    #main {
+      min-height: 100vh;
+      padding: 24px 24px 180px;
+    }
+
+    /* HEADER */
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .brand {
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 8px;
-      border-radius: 12px;
-      width: 100%;
-      text-align: left;
-      transition: background .2s;
     }
-    .row:hover, .row.on { background: var(--s); }
-    .row.on .tt { color: var(--te); }
-    .row .m { flex: 1; min-width: 0; }
-    .tt { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .hs { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
-    .hs::-webkit-scrollbar { display: none; }
-    .card { flex: none; width: 136px; text-align: left; }
-    .card .art { width: 136px; height: 136px; margin-bottom: 6px; border-radius: 14px; font-size: 28px; }
-    .chips { display: flex; gap: 8px; flex-wrap: wrap; }
-    .chip {
-      padding: 7px 14px;
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: linear-gradient(
+        135deg,
+        rgba(167,139,250,.2),
+        rgba(45,212,191,.12)
+      );
+      color: var(--teal);
+      font-size: 24px;
+    }
+
+    .brand-name {
+      font-size: 23px;
+      font-weight: 800;
+      letter-spacing: -.8px;
+    }
+
+    .brand-name span {
+      color: var(--purple);
+    }
+
+    .tagline {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    /* PAGE NAVIGATION */
+
+    .desktop-nav {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px;
+      border: 1px solid var(--border);
       border-radius: 99px;
-      background: var(--s);
-      border: 1px solid var(--b);
+      background: rgba(255,255,255,.025);
+    }
+
+    .nav-button {
+      padding: 9px 15px;
+      border-radius: 99px;
+      color: var(--muted);
       font-size: 13px;
       transition: .2s;
     }
-    .chip.on {
-      background: linear-gradient(135deg, var(--pu), var(--te));
-      color: #07070b;
-      border-color: transparent;
-      font-weight: 600;
+
+    .nav-button:hover {
+      background: var(--surface);
+      color: var(--text);
     }
-    .cta {
-      background: linear-gradient(135deg, var(--pu), var(--te));
+
+    .nav-button.active,
+    .nav-button[aria-current="page"] {
+      background: linear-gradient(
+        135deg,
+        var(--purple),
+        var(--teal)
+      );
       color: #07070b;
       font-weight: 700;
-      padding: 12px 20px;
-      border-radius: 99px;
     }
-    .hero {
-      padding: 18px;
-      margin: 14px 0;
+
+    /* GENERAL COMPONENTS */
+
+    .page {
+      display: none;
+      animation: appear .2s ease;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    @keyframes appear {
+      from {
+        opacity: 0;
+        transform: translateY(5px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    h1 {
+      font-size: clamp(26px, 4vw, 36px);
+      line-height: 1.2;
+      letter-spacing: -1px;
+    }
+
+    h2 {
+      margin: 28px 0 13px;
+      font-size: 19px;
+      letter-spacing: -.3px;
+    }
+
+    h3 {
+      font-size: 16px;
+    }
+
+    p {
+      overflow-wrap: anywhere;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .page-description {
+      margin-top: 8px;
+      color: var(--muted);
+    }
+
+    .section-heading {
       display: flex;
-      gap: 14px;
       align-items: center;
       justify-content: space-between;
+      gap: 12px;
+      margin-top: 30px;
+      margin-bottom: 12px;
     }
-    input.q {
-      width: 100%;
-      padding: 13px 16px;
+
+    .section-heading h2 {
+      margin: 0;
+    }
+
+    .panel {
+      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    .button-primary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 10px 18px;
       border-radius: 99px;
-      background: var(--s);
-      border: 1px solid var(--b);
-      color: var(--tx);
-      font: inherit;
-      outline: 0;
+      background: linear-gradient(
+        135deg,
+        var(--purple),
+        var(--teal)
+      );
+      color: #07070b;
+      font-weight: 750;
+      transition: transform .2s, opacity .2s;
     }
-    input.q:focus { border-color: var(--pu); }
-    #mini {
-      position: fixed;
-      left: 8px; right: 8px;
-      bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-      max-width: 744px;
-      margin: 0 auto;
-      padding: 8px 10px;
+
+    .button-primary:hover {
+      transform: translateY(-1px);
+    }
+
+    .button-secondary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 40px;
+      padding: 9px 15px;
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      background: var(--surface);
+    }
+
+    .button-secondary:hover {
+      background: var(--surface-hover);
+    }
+
+    .icon-button {
+      display: inline-grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      flex-shrink: 0;
+      border: 1px solid transparent;
+      border-radius: 50%;
+      font-size: 20px;
+    }
+
+    .icon-button:hover {
+      background: var(--surface);
+      border-color: var(--border);
+    }
+
+    .field {
+      width: 100%;
+      min-height: 46px;
+      padding: 12px 15px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      outline: none;
+      background: rgba(255,255,255,.045);
+      color: var(--text);
+    }
+
+    .field:focus {
+      border-color: var(--purple);
+    }
+
+    .field::placeholder {
+      color: #777287;
+    }
+
+    .empty-state {
+      padding: 32px 18px;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .empty-state .empty-icon {
+      margin-bottom: 10px;
+      font-size: 32px;
+    }
+
+    .empty-state h3 {
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    /* HOME HERO */
+
+    .hero {
+      position: relative;
       display: flex;
       align-items: center;
-      gap: 10px;
-      z-index: 5;
-      cursor: pointer;
+      justify-content: space-between;
+      gap: 24px;
+      overflow: hidden;
+      min-height: 220px;
+      margin-top: 25px;
+      padding: clamp(24px, 5vw, 42px);
+      border: 1px solid var(--border);
+      border-radius: 26px;
+      background:
+        radial-gradient(
+          circle at 85% 25%,
+          rgba(45,212,191,.22),
+          transparent 35%
+        ),
+        radial-gradient(
+          circle at 70% 100%,
+          rgba(167,139,250,.24),
+          transparent 45%
+        ),
+        rgba(255,255,255,.035);
     }
-    #mini .bar {
-      position: absolute;
-      left: 14px; right: 14px; bottom: 0;
-      height: 2px;
-      background: rgba(255,255,255,.1);
+
+    .hero-copy {
+      position: relative;
+      z-index: 1;
+      max-width: 550px;
     }
-    #mini .bar i {
-      display: block;
-      height: 100%;
-      background: var(--te);
-      width: 0%;
-      transition: width .3s linear;
+
+    .eyebrow {
+      margin-bottom: 10px;
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
     }
-    nav {
-      position: fixed;
-      left: 0; right: 0; bottom: 0;
+
+    .hero h1 {
+      font-size: clamp(32px, 5vw, 49px);
+    }
+
+    .hero p {
+      max-width: 450px;
+      margin-top: 12px;
+      color: var(--muted);
+    }
+
+    .hero-actions {
       display: flex;
-      justify-content: center;
-      background: rgba(7,7,11,.88);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border-top: 1px solid var(--b);
-      padding: 6px 0 calc(6px + env(safe-area-inset-bottom, 0px));
-      z-index: 6;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
     }
-    nav button {
-      flex: 1;
-      max-width: 150px;
-      color: var(--mu);
-      font-size: 11px;
+
+    .hero-symbol {
+      flex-shrink: 0;
+      color: rgba(167,139,250,.55);
+      font-size: clamp(65px, 12vw, 125px);
+      line-height: 1;
+    }
+
+    /* TRACKS AND CARDS */
+
+    .track-grid,
+    .artist-grid,
+    .album-grid,
+    .playlist-grid {
       display: grid;
-      gap: 2px;
-      justify-items: center;
-      padding: 4px;
+      grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
+      gap: 16px;
     }
-    nav button.on { color: var(--tx); }
-    nav span { font-size: 20px; }
-    .ic {
-      font-size: 22px;
-      width: 40px; height: 40px;
-      border-radius: 50%;
+
+    .track-card,
+    .artist-card,
+    .album-card,
+    .playlist-card {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid transparent;
+      border-radius: 17px;
+      background: rgba(255,255,255,.025);
+      text-align: left;
+      transition: background .2s, border-color .2s, transform .2s;
+    }
+
+    .track-card:hover,
+    .artist-card:hover,
+    .album-card:hover,
+    .playlist-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--border);
+      background: var(--surface);
+    }
+
+    .cover {
       display: grid;
       place-items: center;
+      width: 100%;
+      aspect-ratio: 1;
+      margin-bottom: 11px;
+      overflow: hidden;
+      border-radius: 13px;
+      background: linear-gradient(135deg, #312e81, #134e4a);
+      color: rgba(255,255,255,.9);
+      font-size: 34px;
     }
-    .ic.big {
-      background: var(--tx);
-      color: #07070b;
-      width: 54px; height: 54px;
-      font-size: 22px;
-    }
-    .ic.on { color: var(--te); }
 
-    /* Now Playing */
-    #np {
-      position: fixed;
-      inset: 0;
-      z-index: 20;
+    .cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .track-title,
+    .artist-name,
+    .album-title,
+    .playlist-title {
+      overflow: hidden;
+      color: var(--text);
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .track-subtitle,
+    .artist-subtitle,
+    .album-subtitle,
+    .playlist-subtitle {
+      overflow: hidden;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* TRACK LIST */
+
+    .track-list {
       display: flex;
       flex-direction: column;
-      padding: calc(14px + env(safe-area-inset-top, 0px)) 20px calc(18px + env(safe-area-inset-bottom, 0px));
-      transform: translateY(100%);
-      transition: transform .5s cubic-bezier(.2,.8,.2,1);
-      overflow: hidden;
-      background: var(--bg);
+      gap: 4px;
     }
-    #np.open { transform: none; }
-    #npbg {
-      position: absolute;
-      inset: -20%;
-      z-index: -1;
-      filter: blur(70px);
-      opacity: .55;
-      transition: background 1s;
-    }
-    #np > * { max-width: 640px; width: 100%; margin-inline: auto; }
-    .lyrics {
-      flex: 1;
-      overflow-y: auto;
-      text-align: center;
-      padding: 20px 10px 40px;
-      font-size: 22px;
-      line-height: 1.7;
-      color: var(--mu);
-    }
-    .lyrics .line { transition: all .3s; padding: 4px 0; }
-    .lyrics .line.active {
-      color: var(--tx);
-      font-weight: 600;
-      transform: scale(1.05);
-    }
-    .page { display: none; }
-    .page.active { display: block; }
-    .mood-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+
+    .track-row {
+      display: flex;
+      align-items: center;
       gap: 12px;
-      margin-top: 16px;
+      width: 100%;
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid transparent;
+      border-radius: 13px;
+      text-align: left;
+      transition: background .2s;
     }
-    .mood {
-      padding: 20px 12px;
-      border-radius: 16px;
-      background: var(--s);
-      border: 1px solid var(--b);
+
+    .track-row:hover,
+    .track-row.active {
+      background: var(--surface);
+    }
+
+    .track-row.active .track-title {
+      color: var(--teal);
+    }
+
+    .track-row .cover {
+      width: 52px;
+      height: 52px;
+      flex-shrink: 0;
+      margin: 0;
+      border-radius: 10px;
+      font-size: 20px;
+    }
+
+    .track-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .track-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* SEARCH */
+
+    .search-box {
+      position: relative;
+      margin-top: 25px;
+    }
+
+    .search-box .field {
+      padding-left: 46px;
+      border-radius: 99px;
+    }
+
+    .search-icon {
+      position: absolute;
+      top: 50%;
+      left: 17px;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    .search-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 15px 0 20px;
+    }
+
+    .filter-chip {
+      padding: 7px 13px;
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .filter-chip.active {
+      border-color: var(--purple);
+      color: var(--text);
+      background: rgba(167,139,250,.12);
+    }
+
+    /* LIBRARY */
+
+    .library-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 22px 0;
+    }
+
+    .library-tab {
+      padding: 9px 15px;
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      color: var(--muted);
+    }
+
+    .library-tab.active {
+      border-color: var(--teal);
+      background: rgba(45,212,191,.1);
+      color: var(--teal);
+    }
+
+    /* STATUS MESSAGES */
+
+    #resona-toast {
+      position: fixed;
+      left: 50%;
+      bottom: 95px;
+      z-index: 100;
+      width: max-content;
+      max-width: calc(100vw - 32px);
+      padding: 12px 18px;
+      transform: translate(-50%, 15px);
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: #191821;
+      box-shadow: 0 12px 40px rgba(0,0,0,.3);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s, transform .2s;
+    }
+
+    #resona-toast.visible {
+      transform: translate(-50%, 0);
+      opacity: 1;
+    }
+
+    .loading-indicator {
+      padding: 24px 12px;
+      color: var(--muted);
       text-align: center;
-      font-weight: 600;
-      transition: .2s;
     }
-    .mood:hover, .mood.on {
-      background: linear-gradient(135deg, rgba(167,139,250,.25), rgba(45,212,191,.2));
-      border-color: var(--pu);
+
+    /* PLAYER */
+
+    #mini-player {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: auto;
+      max-width: 850px;
+      margin: 0 auto;
+      padding: 10px 12px;
+      border: 1px solid rgba(255,255,255,.13);
+      border-radius: 17px;
+      background: rgba(17,16,25,.94);
+      box-shadow: 0 12px 40px rgba(0,0,0,.3);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
+    }
+
+    .mini-cover {
+      display: grid;
+      place-items: center;
+      width: 46px;
+      height: 46px;
+      flex-shrink: 0;
+      overflow: hidden;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #312e81, #134e4a);
+    }
+
+    .mini-cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .mini-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .mini-title {
+      overflow: hidden;
+      font-size: 13px;
+      font-weight: 750;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mini-artist {
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* NOW PLAYING */
+
+    #now-playing {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      flex-direction: column;
+      overflow-y: auto;
+      padding:
+        calc(18px + env(safe-area-inset-top, 0px))
+        22px
+        calc(24px + env(safe-area-inset-bottom, 0px));
+      background:
+        radial-gradient(
+          circle at 50% 15%,
+          rgba(167,139,250,.18),
+          transparent 45%
+        ),
+        var(--bg);
+    }
+
+    #now-playing.open {
+      display: flex;
+    }
+
+    .player-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      width: 100%;
+      max-width: 650px;
+      margin: 0 auto 25px;
+    }
+
+    .player-cover {
+      display: grid;
+      place-items: center;
+      width: min(70vw, 330px);
+      aspect-ratio: 1;
+      margin: 10px auto 24px;
+      overflow: hidden;
+      border-radius: 22px;
+      background: linear-gradient(135deg, #312e81, #134e4a);
+      box-shadow: 0 25px 80px rgba(0,0,0,.35);
+      font-size: 70px;
+    }
+
+    .player-cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .player-track {
+      text-align: center;
+    }
+
+    .player-track h2 {
+      margin: 0;
+      font-size: 25px;
+    }
+
+    .player-track p {
+      margin-top: 6px;
+      color: var(--muted);
+    }
+
+    .player-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      margin: 24px 0;
+    }
+
+    .player-play {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--purple), var(--teal));
+      color: #07070b;
+      font-size: 23px;
+      font-weight: 800;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 5px;
+      overflow: hidden;
+      border-radius: 99px;
+      background: rgba(255,255,255,.13);
+    }
+
+    .progress-fill {
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--teal);
+    }
+
+    .player-time {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    /* BOTTOM NAVIGATION */
+
+    .mobile-nav {
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 30;
+      display: none;
+      justify-content: center;
+      gap: 0;
+      padding: 7px 4px calc(7px + env(safe-area-inset-bottom, 0px));
+      border-top: 1px solid var(--border);
+      background: rgba(7,7,11,.94);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+
+    .mobile-nav button {
+      display: grid;
+      flex: 1;
+      justify-items: center;
+      gap: 3px;
+      max-width: 115px;
+      padding: 5px 2px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .mobile-nav button.active {
+      color: var(--teal);
+    }
+
+    .mobile-nav .nav-icon {
+      font-size: 20px;
+      line-height: 1.1;
+    }
+
+    /* FOOTER */
+
+    .site-footer {
+      margin-top: 50px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    @media (max-width: 900px) {
+      #main {
+        padding: 20px 18px 180px;
+      }
+
+      .desktop-nav {
+        display: none;
+      }
+
+      .mobile-nav {
+        display: flex;
+      }
+    }
+
+    @media (max-width: 520px) {
+      #main {
+        padding: 17px 14px 175px;
+      }
+
+      .topbar {
+        margin-bottom: 20px;
+      }
+
+      .brand-name {
+        font-size: 21px;
+      }
+
+      .brand-mark {
+        width: 38px;
+        height: 38px;
+      }
+
+      .hero {
+        min-height: 195px;
+        padding: 23px 19px;
+        gap: 10px;
+      }
+
+      .hero-symbol {
+        font-size: 57px;
+      }
+
+      .track-grid,
+      .artist-grid,
+      .album-grid,
+      .playlist-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .track-card,
+      .artist-card,
+      .album-card,
+      .playlist-card {
+        padding: 8px;
+      }
+
+      .section-heading {
+        margin-top: 25px;
+      }
+
+      .player-controls {
+        gap: 12px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        transition-duration: .01ms !important;
+      }
     }
   </style>
 </head>
+
 <body>
   <div id="app">
-    <div id="main">
+
+    <main id="main">
+
+      <!-- HEADER -->
+      <header class="topbar">
+        <a class="brand" href="#home" aria-label="Resona home">
+          <span class="brand-mark" aria-hidden="true">◉</span>
+          <span>
+            <span class="brand-name">Res<span>ona</span></span>
+            <span class="tagline" style="display:block">
+              Discover your sound
+            </span>
+          </span>
+        </a>
+
+        <nav class="desktop-nav" aria-label="Main navigation">
+          <button class="nav-button active"
+                  data-page-target="home"
+                  aria-current="page">Home</button>
+
+          <button class="nav-button"
+                  data-page-target="explore">Explore</button>
+
+          <button class="nav-button"
+                  data-page-target="search">Search</button>
+
+          <button class="nav-button"
+                  data-page-target="library">Library</button>
+
+          <button class="nav-button"
+                  data-page-target="artists">Artists</button>
+        </nav>
+
+        <button class="icon-button"
+                data-page-target="settings"
+                aria-label="Settings"
+                title="Settings">⚙</button>
+      </header>
+
       <!-- HOME -->
-      <div class="page active" id="page-home">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div class="tag">Good evening</div>
-            <h1>Resona</h1>
+      <section class="page active"
+               id="home-page"
+               data-page="home">
+
+        <div class="hero">
+          <div class="hero-copy">
+            <div class="eyebrow">Your sound, your world</div>
+
+            <h1>Find your next<br>favourite song.</h1>
+
+            <p>
+              Discover music, explore artists and build a collection
+              that feels like you.
+            </p>
+
+            <div class="hero-actions">
+              <button class="button-primary"
+                      data-page-target="explore">
+                Explore music <span aria-hidden="true">→</span>
+              </button>
+
+              <button class="button-secondary"
+                      data-page-target="search">
+                Search music
+              </button>
+            </div>
           </div>
-          <button class="cta" onclick="openReset()" style="padding:8px 16px;font-size:13px">The Reset</button>
+
+          <div class="hero-symbol" aria-hidden="true">♫</div>
         </div>
 
-        <div class="hero glass">
-          <div>
-            <div class="tag">Made for you</div>
-            <div style="font-weight:700;font-size:17px;margin:4px 0">Your Daily Mix</div>
-            <div class="tag">Based on what you love</div>
+        <section>
+          <div class="section-heading">
+            <h2>Featured music</h2>
+            <button class="button-secondary"
+                    data-page-target="explore">Explore all</button>
           </div>
-          <button class="cta" onclick="playSong(0)">Play</button>
+
+          <div id="featured-tracks" class="track-grid">
+            <div class="empty-state" style="grid-column:1/-1">
+              <div class="empty-icon">♫</div>
+              <h3>Music discovery is being connected</h3>
+              <p>Real catalogue results will appear here once the data source is configured.</p>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="section-heading">
+            <h2>Trending tracks</h2>
+          </div>
+
+          <div id="trending-tracks" class="track-list">
+            <div class="loading-indicator">
+              Trending music will appear when catalogue data is available.
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="section-heading">
+            <h2>Recently played</h2>
+          </div>
+
+          <div id="recently-played" class="track-grid">
+            <div class="empty-state" style="grid-column:1/-1">
+              Your listening history will appear here.
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <!-- EXPLORE -->
+      <section class="page"
+               id="explore-page"
+               data-page="explore">
+
+        <h1>Explore music</h1>
+
+        <p class="page-description">
+          Discover tracks and find artists worth listening to.
+        </p>
+
+        <div class="search-box">
+          <span class="search-icon" aria-hidden="true">⌕</span>
+
+          <input id="explore-search-input"
+                 class="field"
+                 type="search"
+                 placeholder="Find music..."
+                 autocomplete="off"
+                 aria-label="Search music from Explore">
         </div>
 
-        <h2>Recently played</h2>
-        <div class="hs" id="recent"></div>
+        <section>
+          <div class="section-heading">
+            <h2>Discover tracks</h2>
+          </div>
 
-        <h2>Recommended</h2>
-        <div id="recommended"></div>
-      </div>
+          <div id="explore-tracks" class="track-grid">
+            <div class="empty-state" style="grid-column:1/-1">
+              Tracks will appear when the music catalogue is connected.
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="section-heading">
+            <h2>Artists</h2>
+          </div>
+
+          <div id="explore-artists" class="artist-grid">
+            <div class="empty-state" style="grid-column:1/-1">
+              Artist information will appear here.
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="section-heading">
+            <h2>Albums</h2>
+          </div>
+
+          <div id="explore-albums" class="album-grid">
+            <div class="empty-state" style="grid-column:1/-1">
+              Album information will appear here.
+            </div>
+          </div>
+        </section>
+      </section>
 
       <!-- SEARCH -->
-      <div class="page" id="page-search">
+      <section class="page"
+               id="search-page"
+               data-page="search">
+
         <h1>Search</h1>
-        <input class="q" id="searchInput" placeholder="Songs, artists, albums..." oninput="doSearch(this.value)">
-        <div id="searchResults" style="margin-top:16px"></div>
-      </div>
+
+        <p class="page-description">
+          Search for tracks, artists and albums.
+        </p>
+
+        <div class="search-box">
+          <span class="search-icon" aria-hidden="true">⌕</span>
+
+          <input id="search-input"
+                 class="field"
+                 type="search"
+                 placeholder="What do you want to discover?"
+                 autocomplete="off"
+                 aria-label="Search tracks, artists and albums">
+        </div>
+
+        <div class="search-filters" id="search-filters">
+          <button class="filter-chip active"
+                  type="button"
+                  data-search-type="all">Everything</button>
+
+          <button class="filter-chip"
+                  type="button"
+                  data-search-type="track">Tracks</button>
+
+          <button class="filter-chip"
+                  type="button"
+                  data-search-type="artist">Artists</button>
+
+          <button class="filter-chip"
+                  type="button"
+                  data-search-type="album">Albums</button>
+        </div>
+
+        <div id="search-status"
+             class="muted"
+             role="status"
+             aria-live="polite"></div>
+
+        <div id="search-results" class="track-list">
+          <div class="empty-state">
+            <div class="empty-icon">⌕</div>
+            <h3>Search Resona</h3>
+            <p>Your results will appear here.</p>
+          </div>
+        </div>
+      </section>
 
       <!-- LIBRARY -->
-      <div class="page" id="page-library">
-        <h1>Your Library</h1>
-        <div class="chips" style="margin:12px 0 18px">
-          <button class="chip on">Playlists</button>
-          <button class="chip">Artists</button>
-          <button class="chip">Albums</button>
+      <section class="page"
+               id="library-page"
+               data-page="library">
+
+        <h1>Your library</h1>
+
+        <p class="page-description">
+          Keep the music you love in one place.
+        </p>
+
+        <div class="library-tabs" id="library-tabs">
+          <button class="library-tab active"
+                  type="button"
+                  data-library-tab="liked">Liked</button>
+
+          <button class="library-tab"
+                  type="button"
+                  data-library-tab="saved">Saved</button>
+
+          <button class="library-tab"
+                  type="button"
+                  data-library-tab="history">History</button>
+
+          <button class="library-tab"
+                  type="button"
+                  data-library-tab="playlists">Playlists</button>
         </div>
-        <div id="libraryList"></div>
-      </div>
 
-      <!-- RESET -->
-      <div class="page" id="page-reset">
-        <h1>The Reset</h1>
-        <p class="tag" style="margin:8px 0 4px">Feeling stuck with the same recommendations?</p>
-        <p style="margin-bottom:8px">Choose a new mood and start fresh.</p>
-
-        <div class="mood-grid" id="moods">
-          <button class="mood" data-mood="calm">Calm</button>
-          <button class="mood" data-mood="energetic">Energetic</button>
-          <button class="mood" data-mood="melancholy">Melancholy</button>
-          <button class="mood" data-mood="focus">Focus</button>
-          <button class="mood" data-mood="party">Party</button>
-          <button class="mood" data-mood="night">Late Night</button>
+        <div id="liked-tracks" class="track-list">
+          <div class="empty-state">
+            <div class="empty-icon">♡</div>
+            <h3>Your liked music</h3>
+            <p>Tracks you like will appear here.</p>
+          </div>
         </div>
 
-        <button class="cta" style="width:100%;margin-top:24px" onclick="doReset()">Generate New Sound</button>
-        <p class="tag" style="text-align:center;margin-top:12px" id="resetMsg"></p>
-      </div>
-    </div>
+        <div id="saved-tracks"
+             class="track-list"
+             hidden></div>
+
+        <div id="listening-history"
+             class="track-list"
+             hidden></div>
+
+        <div id="library-playlists"
+             class="playlist-grid"
+             hidden></div>
+      </section>
+
+      <!-- ARTISTS -->
+      <section class="page"
+               id="artists-page"
+               data-page="artists">
+
+        <h1>Artists</h1>
+
+        <p class="page-description">
+          Discover musicians and learn about their work.
+        </p>
+
+        <div id="artists-list" class="artist-grid">
+          <div class="empty-state" style="grid-column:1/-1">
+            Artist catalogue data will appear here.
+          </div>
+        </div>
+      </section>
+
+      <!-- ALBUMS -->
+      <section class="page"
+               id="albums-page"
+               data-page="albums">
+
+        <h1>Albums</h1>
+
+        <p class="page-description">
+          Explore releases and collections of music.
+        </p>
+
+        <div id="albums-list" class="album-grid">
+          <div class="empty-state" style="grid-column:1/-1">
+            Album catalogue data will appear here.
+          </div>
+        </div>
+      </section>
+
+      <!-- PLAYLISTS -->
+      <section class="page"
+               id="playlists-page"
+               data-page="playlists">
+
+        <h1>Playlists</h1>
+
+        <p class="page-description">
+          Organize your favourite music into collections.
+        </p>
+
+        <div class="panel" style="margin-top:22px">
+          <h3>Your playlists</h3>
+
+          <p class="muted" style="margin-top:7px">
+            Your saved playlists will appear here.
+          </p>
+        </div>
+
+        <div id="playlists-list"
+             class="playlist-grid"
+             style="margin-top:20px"></div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="page"
+               id="settings-page"
+               data-page="settings">
+
+        <h1>Settings</h1>
+
+        <p class="page-description">
+          Manage your local Resona preferences.
+        </p>
+
+        <section class="panel" style="margin-top:24px">
+          <h3>About Resona</h3>
+
+          <p class="muted" style="margin-top:8px">
+            Resona is being developed as a music discovery platform.
+            Music availability depends on the connected catalogue
+            and the playback rights provided by each source.
+          </p>
+        </section>
+
+        <section class="panel" style="margin-top:16px">
+          <h3>Local library</h3>
+
+          <p class="muted" style="margin-top:8px">
+            Saved music and preferences may be stored on this device.
+            Account synchronization has not yet been configured.
+          </p>
+        </section>
+
+        <section class="panel" style="margin-top:16px">
+          <h3>Data export</h3>
+
+          <p class="muted" style="margin-top:8px">
+            Use the library export feature when it becomes available
+            in the connected application.
+          </p>
+
+          <button class="button-secondary"
+                  id="export-library-button"
+                  type="button"
+                  style="margin-top:14px">
+            Export library
+          </button>
+        </section>
+      </section>
+
+      <footer class="site-footer">
+        <p>Resona · Discover your sound.</p>
+        <p style="margin-top:5px">
+          Music availability depends on each source's terms and permissions.
+        </p>
+      </footer>
+
+    </main>
 
     <!-- MINI PLAYER -->
-    <div id="mini" class="glass" onclick="openNowPlaying()" style="display:none">
-      <div class="art" id="miniArt" style="width:44px;height:44px;font-size:16px">♪</div>
-      <div class="m">
-        <div class="tt" id="miniTitle">Song</div>
-        <div class="tag" id="miniArtist">Artist</div>
-      </div>
-      <button class="ic" id="miniPlay" onclick="event.stopPropagation();togglePlay()">▶</button>
-      <div class="bar"><i id="miniProgress"></i></div>
-    </div>
+    <div id="mini-player"
+         class="panel"
+         hidden
+         aria-label="Music player">
 
-    <!-- BOTTOM NAV -->
-    <nav>
-      <button class="on" onclick="showPage('home', this)"><span>⌂</span>Home</button>
-      <button onclick="showPage('search', this)"><span>⌕</span>Search</button>
-      <button onclick="showPage('library', this)"><span>☰</span>Library</button>
-      <button onclick="showPage('reset', this)"><span>↻</span>Reset</button>
-    </nav>
+      <button id="mini-player-open"
+              class="mini-cover"
+              type="button"
+              aria-label="Open now playing">♫</button>
+
+      <div class="mini-info">
+        <div id="mini-player-title" class="mini-title">
+          Nothing playing
+        </div>
+
+        <div id="mini-player-artist" class="mini-artist">
+          Choose a track
+        </div>
+      </div>
+
+      <button id="mini-player-previous"
+              class="icon-button"
+              type="button"
+              aria-label="Previous track">⏮</button>
+
+      <button id="mini-player-toggle"
+              class="icon-button"
+              type="button"
+              aria-label="Play or pause">▶</button>
+
+      <button id="mini-player-next"
+              class="icon-button"
+              type="button"
+              aria-label="Next track">⏭</button>
+    </div>
 
     <!-- NOW PLAYING -->
-    <div id="np">
-      <div id="npbg"></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <button onclick="closeNowPlaying()" style="font-size:20px">↓</button>
-        <div class="tag">Now Playing</div>
-        <button style="opacity:0">···</button>
+    <section id="now-playing"
+             aria-label="Now playing"
+             aria-hidden="true">
+
+      <header class="player-header">
+        <button id="now-playing-close"
+                class="icon-button"
+                type="button"
+                aria-label="Close now playing">↓</button>
+
+        <span class="muted">NOW PLAYING</span>
+
+        <button id="now-playing-menu"
+                class="icon-button"
+                type="button"
+                aria-label="Player options">···</button>
+      </header>
+
+      <div id="now-playing-cover" class="player-cover">♫</div>
+
+      <div class="player-track">
+        <h2 id="now-playing-title">Nothing playing</h2>
+        <p id="now-playing-artist">Choose a track to get started</p>
       </div>
 
-      <div class="art" id="npArt" style="width:min(70vw,280px);height:min(70vw,280px);margin:10px auto 20px;border-radius:18px;font-size:48px">♪</div>
+      <div style="width:100%;max-width:650px;margin:30px auto 0">
+        <div class="progress-track"
+             id="player-progress-track"
+             role="progressbar"
+             aria-label="Playback progress"
+             aria-valuemin="0"
+             aria-valuemax="100"
+             aria-valuenow="0">
 
-      <div style="text-align:center;margin-bottom:8px">
-        <div style="font-size:22px;font-weight:700" id="npTitle">Song</div>
-        <div class="tag" id="npArtist">Artist</div>
-      </div>
-
-      <div class="lyrics" id="lyrics"></div>
-
-      <div style="margin-top:auto;padding-top:12px">
-        <div style="height:4px;background:rgba(255,255,255,.15);border-radius:99px;margin-bottom:16px">
-          <div id="npProgress" style="height:100%;width:0%;background:var(--te);border-radius:99px;transition:width .3s linear"></div>
+          <div id="player-progress-fill" class="progress-fill"></div>
         </div>
-        <div style="display:flex;justify-content:center;align-items:center;gap:28px">
-          <button class="ic" onclick="prevSong()">⏮</button>
-          <button class="ic big" id="npPlay" onclick="togglePlay()">▶</button>
-          <button class="ic" onclick="nextSong()">⏭</button>
+
+        <div class="player-time">
+          <span id="player-current-time">0:00</span>
+          <span id="player-duration">0:00</span>
+        </div>
+
+        <div class="player-controls">
+          <button id="player-previous"
+                  class="icon-button"
+                  type="button"
+                  aria-label="Previous track">⏮</button>
+
+          <button id="player-toggle"
+                  class="player-play"
+                  type="button"
+                  aria-label="Play or pause">▶</button>
+
+          <button id="player-next"
+                  class="icon-button"
+                  type="button"
+                  aria-label="Next track">⏭</button>
         </div>
       </div>
-    </div>
+
+      <div id="player-message"
+           class="muted"
+           role="status"
+           aria-live="polite"
+           style="text-align:center;margin-top:8px">
+        No track selected.
+      </div>
+    </section>
+
+    <!-- MOBILE NAVIGATION -->
+    <nav class="mobile-nav" aria-label="Mobile navigation">
+
+      <button class="active"
+              data-page-target="home"
+              aria-current="page">
+        <span class="nav-icon" aria-hidden="true">⌂</span>
+        Home
+      </button>
+
+      <button data-page-target="explore">
+        <span class="nav-icon" aria-hidden="true">◈</span>
+        Explore
+      </button>
+
+      <button data-page-target="search">
+        <span class="nav-icon" aria-hidden="true">⌕</span>
+        Search
+      </button>
+
+      <button data-page-target="library">
+        <span class="nav-icon" aria-hidden="true">▤</span>
+        Library
+      </button>
+
+      <button data-page-target="playlists">
+        <span class="nav-icon" aria-hidden="true">♫</span>
+        Playlists
+      </button>
+    </nav>
+
+    <!-- GLOBAL STATUS -->
+    <div id="resona-toast"
+         role="status"
+         aria-live="polite"></div>
+
   </div>
 
-  <script>
-    // ========== MOCK DATA ==========
-    const songs = [
-      {
-        id: 0, title: "Midnight Drive", artist: "Luna Echo", color: "linear-gradient(135deg,#4c1d95,#0f766e)",
-        lyrics: [
-          { t: 0, text: "City lights are calling me again" },
-          { t: 5, text: "Windows down, the night begins" },
-          { t: 10, text: "Every street feels brand new" },
-          { t: 15, text: "When I'm lost in thoughts of you" },
-          { t: 20, text: "We're just floating through the dark" },
-          { t: 25, text: "Heartbeats matching every spark" },
-          { t: 30, text: "This is where I want to stay" },
-          { t: 35, text: "Until the night turns into day" }
-        ]
-      },
-      {
-        id: 1, title: "Soft Static", artist: "Velvet Static", color: "linear-gradient(135deg,#831843,#1e3a8a)",
-        lyrics: [
-          { t: 0, text: "There's a quiet in the noise" },
-          { t: 5, text: "A frequency only we can hear" },
-          { t: 10, text: "Between the stations of our lives" },
-          { t: 15, text: "I found your signal crystal clear" },
-          { t: 20, text: "Soft static, hold me close" },
-          { t: 25, text: "In the space between the notes" }
-        ]
-      },
-      {
-        id: 2, title: "Ocean Circuit", artist: "Tideform", color: "linear-gradient(135deg,#164e63,#4c1d95)",
-        lyrics: [
-          { t: 0, text: "Waves of light across the glass" },
-          { t: 5, text: "Digital tides that never last" },
-          { t: 10, text: "We dive deeper than before" },
-          { t: 15, text: "Looking for something more" }
-        ]
-      },
-      {
-        id: 3, title: "Afterglow", artist: "Solenne", color: "linear-gradient(135deg,#9d174d,#6b21a8)",
-        lyrics: [
-          { t: 0, text: "The sun has left but gold remains" },
-          { t: 5, text: "Painted on the window frames" },
-          { t: 10, text: "I keep your warmth inside my chest" },
-          { t: 15, text: "Even when the day has left" }
-        ]
-      },
-      {
-        id: 4, title: "Neon Rain", artist: "Pulse District", color: "linear-gradient(135deg,#1e3a8a,#0f766e)",
-        lyrics: [
-          { t: 0, text: "Reflections dance on wet concrete" },
-          { t: 5, text: "Every drop a different beat" },
-          { t: 10, text: "Under neon we forget the day" },
-          { t: 15, text: "Let the city wash us away" }
-        ]
-      },
-      {
-        id: 5, title: "Quiet Hours", artist: "Mira Vale", color: "linear-gradient(135deg,#4a044e,#1e1b4b)",
-        lyrics: [
-          { t: 0, text: "When the world finally slows" },
-          { t: 5, text: "And the only sound is us" },
-          { t: 10, text: "In these quiet hours I know" },
-          { t: 15, text: "This is more than enough" }
-        ]
-      }
-    ];
+  <!--
+    Load configuration first, followed by its dependencies.
+    This order is intentional.
 
-    let currentIndex = 0;
-    let isPlaying = false;
-    let progress = 0;
-    let progressTimer = null;
-    let lyricIndex = 0;
+    NOTE:
+    The existing modules still need to be checked against
+    this HTML before we can confirm full integration.
+  -->
 
-    // ========== RENDER HELPERS ==========
-    function songRow(s, i) {
-      return `
-        <button class="row \( {i === currentIndex && isPlaying ? 'on' : ''}" onclick="playSong( \){i})">
-          <div class="art" style="width:48px;height:48px;background:${s.color}">♪</div>
-          <div class="m">
-            <div class="tt">${s.title}</div>
-            <div class="tag">${s.artist}</div>
-          </div>
-        </button>`;
-    }
+  <script src="./config.js"></script>
+  <script src="./js/api.js"></script>
+  <script src="./js/player.js"></script>
+  <script src="./js/discovery.js"></script>
+  <script src="./js/search.js"></script>
+  <script src="./js/library.js"></script>
+  <script src="./js/ui.js"></script>
+  <script src="./js/app.js"></script>
 
-    function renderHome() {
-      document.getElementById('recent').innerHTML = songs.slice(0,4).map((s,i) => `
-        <button class="card" onclick="playSong(${i})">
-          <div class="art" style="background:${s.color}">♪</div>
-          <div class="tt">${s.title}</div>
-          <div class="tag">${s.artist}</div>
-        </button>`).join('');
-
-      document.getElementById('recommended').innerHTML = songs.map((s,i) => songRow(s,i)).join('');
-    }
-
-    function renderLibrary() {
-      document.getElementById('libraryList').innerHTML = `
-        <button class="row" onclick="playSong(0)">
-          <div class="art" style="width:48px;height:48px;background:linear-gradient(135deg,var(--pu),var(--te))">♥</div>
-          <div class="m"><div class="tt">Liked Songs</div><div class="tag">12 songs</div></div>
-        </button>
-        ${songs.map((s,i) => songRow(s,i)).join('')}`;
-    }
-
-    function renderSearch(q = '') {
-      const filtered = songs.filter(s =>
-        s.title.toLowerCase().includes(q.toLowerCase()) ||
-        s.artist.toLowerCase().includes(q.toLowerCase())
-      );
-      document.getElementById('searchResults').innerHTML = filtered.length
-        ? filtered.map(s => songRow(s, s.id)).join('')
-        : `<p class="tag" style="padding:20px 0">No results for "${q}"</p>`;
-    }
-
-    // ========== PLAYER ==========
-    function playSong(i) {
-      currentIndex = i;
-      const s = songs[i];
-      isPlaying = true;
-      progress = 0;
-      lyricIndex = 0;
-
-      // Update mini
-      document.getElementById('mini').style.display = 'flex';
-      document.getElementById('miniTitle').textContent = s.title;
-      document.getElementById('miniArtist').textContent = s.artist;
-      document.getElementById('miniArt').style.background = s.color;
-      document.getElementById('miniPlay').textContent = '⏸';
-
-      // Update Now Playing
-      document.getElementById('npTitle').textContent = s.title;
-      document.getElementById('npArtist').textContent = s.artist;
-      document.getElementById('npArt').style.background = s.color;
-      document.getElementById('npbg').style.background = s.color;
-      document.getElementById('npPlay').textContent = '⏸';
-
-      // Lyrics
-      const lyricsEl = document.getElementById('lyrics');
-      lyricsEl.innerHTML = s.lyrics.map((l, idx) =>
-        `<div class="line" data-i="\( {idx}"> \){l.text}</div>`
-      ).join('');
-
-      startProgress();
-      updateLyrics();
-      renderHome();
-      renderLibrary();
-    }
-
-    function togglePlay() {
-      isPlaying = !isPlaying;
-      document.getElementById('miniPlay').textContent = isPlaying ? '⏸' : '▶';
-      document.getElementById('npPlay').textContent = isPlaying ? '⏸' : '▶';
-      if (isPlaying) startProgress();
-      else clearInterval(progressTimer);
-    }
-
-    function startProgress() {
-      clearInterval(progressTimer);
-      progressTimer = setInterval(() => {
-        if (!isPlaying) return;
-        progress += 0.8;
-        if (progress >= 100) {
-          nextSong();
-          return;
-        }
-        document.getElementById('miniProgress').style.width = progress + '%';
-        document.getElementById('npProgress').style.width = progress + '%';
-        updateLyrics();
-      }, 300);
-    }
-
-    function updateLyrics() {
-      const s = songs[currentIndex];
-      const currentTime = (progress / 100) * 40; // fake 40s song
-      let newIndex = 0;
-      for (let i = 0; i < s.lyrics.length; i++) {
-        if (currentTime >= s.lyrics[i].t) newIndex = i;
-      }
-      if (newIndex !== lyricIndex) {
-        lyricIndex = newIndex;
-        document.querySelectorAll('.lyrics .line').forEach((el, i) => {
-          el.classList.toggle('active', i === lyricIndex);
-        });
-        const active = document.querySelector('.lyrics .line.active');
-        if (active) active.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }
-
-    function nextSong() {
-      playSong((currentIndex + 1) % songs.length);
-    }
-    function prevSong() {
-      playSong((currentIndex - 1 + songs.length) % songs.length);
-    }
-
-    function openNowPlaying() {
-      document.getElementById('np').classList.add('open');
-    }
-    function closeNowPlaying() {
-      document.getElementById('np').classList.remove('open');
-    }
-
-    // ========== NAVIGATION ==========
-    function showPage(name, btn) {
-      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-      document.getElementById('page-' + name).classList.add('active');
-      document.querySelectorAll('nav button').forEach(b => b.classList.remove('on'));
-      if (btn) btn.classList.add('on');
-    }
-
-    function doSearch(q) {
-      renderSearch(q);
-    }
-
-    // ========== THE RESET ==========
-    let selectedMood = null;
-    document.getElementById('moods').addEventListener('click', e => {
-      if (e.target.classList.contains('mood')) {
-        document.querySelectorAll('.mood').forEach(m => m.classList.remove('on'));
-        e.target.classList.add('on');
-        selectedMood = e.target.dataset.mood;
-      }
-    });
-
-    function openReset() {
-      showPage('reset', document.querySelector('nav button:last-child'));
-    }
-
-    function doReset() {
-      if (!selectedMood) {
-        document.getElementById('resetMsg').textContent = 'Please choose a mood first';
-        return;
-      }
-      document.getElementById('resetMsg').textContent = `Generating fresh recommendations for “${selectedMood}”...`;
-      setTimeout(() => {
-        // Shuffle songs for demo
-        songs.sort(() => Math.random() - 0.5);
-        renderHome();
-        document.getElementById('resetMsg').textContent = `Done! Your new ${selectedMood} sound is ready on Home.`;
-        setTimeout(() => showPage('home', document.querySelector('nav button')), 1200);
-      }, 900);
-    }
-
-    // ========== INIT ==========
-    renderHome();
-    renderLibrary();
-    renderSearch();
-  </script>
 </body>
   </html>
