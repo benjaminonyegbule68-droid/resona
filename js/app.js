@@ -1,25 +1,17 @@
 /* =========================================================
    RESONA — APPLICATION ENTRY POINT
    File: js/app.js
+   Version: 2.0.0
 
-   Responsibilities:
-   - Initialize Resona modules
-   - Coordinate navigation
-   - Load music discovery sections
-   - Connect search, library, and player
-   - Render shared UI components
-   - Handle global application events
-   - Provide safe loading and error states
+   Coordinates:
+   - api.js
+   - player.js
+   - discovery.js
+   - search.js
+   - library.js
+   - ui.js
 
-   Required modules:
-   - js/api.js
-   - js/player.js
-   - js/discovery.js
-   - js/search.js
-   - js/library.js
-   - js/ui.js
-
-   This file does not replace your existing root app.js.
+   This file does not replace the root app.js.
    ========================================================= */
 
 (function (window, document) {
@@ -30,7 +22,7 @@
     return;
   }
 
-  const APP_VERSION = "1.0.0";
+  const APP_VERSION = "2.0.0";
 
   const state = {
     initialized: false,
@@ -38,10 +30,10 @@
     currentPage: "home",
     lastPage: "home",
     isLoading: false,
-    errors: [],
     activeSearch: "",
     searchTimer: null,
-    currentSection: "featured",
+    searchRequestId: 0,
+    errors: [],
     destroyHandlers: []
   };
 
@@ -54,24 +46,62 @@
     "ResonaUI"
   ];
 
+  const VALID_PAGES = new Set([
+    "home",
+    "explore",
+    "search",
+    "library",
+    "now-playing",
+    "artists",
+    "albums",
+    "playlists",
+    "settings"
+  ]);
+
   /* =========================================================
      UTILITIES
      ========================================================= */
 
   function log() {
-    console.log.apply(console, [
-      "[Resona App]"
-    ].concat(Array.from(arguments)));
+    console.log.apply(
+      console,
+      ["[Resona App]"].concat(Array.from(arguments))
+    );
   }
 
   function warn() {
-    console.warn.apply(console, [
-      "[Resona App]"
-    ].concat(Array.from(arguments)));
+    console.warn.apply(
+      console,
+      ["[Resona App]"].concat(Array.from(arguments))
+    );
   }
 
   function getModule(name) {
     return window[name] || null;
+  }
+
+  function getAPI() {
+    return getModule("ResonaAPI");
+  }
+
+  function getPlayer() {
+    return getModule("ResonaPlayer");
+  }
+
+  function getDiscovery() {
+    return getModule("ResonaDiscovery");
+  }
+
+  function getSearch() {
+    return getModule("ResonaSearch");
+  }
+
+  function getLibrary() {
+    return getModule("ResonaLibrary");
+  }
+
+  function getUI() {
+    return getModule("ResonaUI");
   }
 
   function missingModules() {
@@ -80,19 +110,44 @@
     });
   }
 
+  /*
+   * Correctly searches inside the requested root element.
+   */
   function getElement(selector, root) {
-    return document.querySelector(selector, root || document);
+    const scope = root || document;
+
+    if (!scope || typeof scope.querySelector !== "function") {
+      return null;
+    }
+
+    try {
+      return scope.querySelector(selector);
+    } catch (error) {
+      warn("Invalid element selector:", selector, error);
+      return null;
+    }
   }
 
   function getElements(selector, root) {
-    return Array.from(
-      (root || document).querySelectorAll(selector)
-    );
+    const scope = root || document;
+
+    if (!scope || typeof scope.querySelectorAll !== "function") {
+      return [];
+    }
+
+    try {
+      return Array.from(scope.querySelectorAll(selector));
+    } catch (error) {
+      warn("Invalid element selector:", selector, error);
+      return [];
+    }
   }
 
   function escapeHTML(value) {
-    if (window.ResonaUI) {
-      return window.ResonaUI.escapeHTML(value);
+    const ui = getUI();
+
+    if (ui && typeof ui.escapeHTML === "function") {
+      return ui.escapeHTML(value);
     }
 
     return String(value == null ? "" : value).replace(
@@ -110,45 +165,45 @@
   }
 
   function announce(message, options) {
-    if (
-      window.ResonaUI &&
-      typeof window.ResonaUI.announce === "function"
-    ) {
-      window.ResonaUI.announce(message, options);
+    const ui = getUI();
+
+    if (ui && typeof ui.announce === "function") {
+      try {
+        ui.announce(message, options);
+      } catch (error) {
+        warn("Announcement failed.", error);
+      }
     }
   }
 
   function notify(message, type) {
-    const ui = getModule("ResonaUI");
+    const ui = getUI();
 
     if (!ui) {
       log(message);
       return;
     }
 
-    const method = {
-      success: ui.success,
-      error: ui.error,
-      warning: ui.warning,
-      info: ui.info
-    }[type || "info"];
+    const methods = {
+      success: "success",
+      error: "error",
+      warning: "warning",
+      info: "info"
+    };
 
-    if (typeof method === "function") {
-      method.call(ui, message);
-    } else {
+    const method = methods[type || "info"];
+
+    if (typeof ui[method] === "function") {
+      ui[method](message);
+      return;
+    }
+
+    if (typeof ui.toast === "function") {
       ui.toast(message);
+      return;
     }
-  }
 
-  function safeCall(callback, fallback) {
-    try {
-      return typeof callback === "function"
-        ? callback()
-        : fallback;
-    } catch (error) {
-      recordError(error);
-      return fallback;
-    }
+    log(message);
   }
 
   function recordError(error, context) {
@@ -175,6 +230,17 @@
     return entry;
   }
 
+  function safeCall(callback, fallback) {
+    try {
+      return typeof callback === "function"
+        ? callback()
+        : fallback;
+    } catch (error) {
+      recordError(error);
+      return fallback;
+    }
+  }
+
   function addHandler(target, eventName, callback, options) {
     if (!target || typeof target.addEventListener !== "function") {
       return function () {};
@@ -182,8 +248,20 @@
 
     target.addEventListener(eventName, callback, options);
 
+    let active = true;
+
     const cleanup = function () {
-      target.removeEventListener(eventName, callback, options);
+      if (!active) {
+        return;
+      }
+
+      active = false;
+
+      target.removeEventListener(
+        eventName,
+        callback,
+        options
+      );
     };
 
     state.destroyHandlers.push(cleanup);
@@ -191,9 +269,23 @@
     return cleanup;
   }
 
+  function emitAppEvent(name, detail) {
+    try {
+      window.dispatchEvent(
+        new CustomEvent("resona:app:" + name, {
+          detail: detail === undefined ? null : detail
+        })
+      );
+    } catch (error) {
+      warn("Could not dispatch application event:", name);
+    }
+  }
+
   function getTrackId(track) {
-    if (window.ResonaUI) {
-      return window.ResonaUI.getTrackId(track);
+    const ui = getUI();
+
+    if (ui && typeof ui.getTrackId === "function") {
+      return String(ui.getTrackId(track) || "").trim();
     }
 
     if (!track || typeof track !== "object") {
@@ -210,8 +302,10 @@
   }
 
   function getTrackTitle(track) {
-    if (window.ResonaUI) {
-      return window.ResonaUI.getTrackTitle(track);
+    const ui = getUI();
+
+    if (ui && typeof ui.getTrackTitle === "function") {
+      return ui.getTrackTitle(track);
     }
 
     return String(
@@ -221,23 +315,36 @@
   }
 
   function getArtistName(track) {
-    if (window.ResonaUI) {
-      return window.ResonaUI.getArtistName(track);
+    const ui = getUI();
+
+    if (ui && typeof ui.getArtistName === "function") {
+      return ui.getArtistName(track);
     }
 
-    return String(
-      track && (
-        track.artistName ||
-        track.artist_name ||
-        track.artist ||
-        "Unknown artist"
-      )
-    );
+    if (!track || typeof track !== "object") {
+      return "Unknown artist";
+    }
+
+    const artist = track.artistName ||
+      track.artist_name ||
+      track.artist;
+
+    if (typeof artist === "string") {
+      return artist;
+    }
+
+    if (artist && typeof artist === "object") {
+      return String(artist.name || "Unknown artist");
+    }
+
+    return "Unknown artist";
   }
 
   function getArtwork(track) {
-    if (window.ResonaUI) {
-      return window.ResonaUI.getTrackArtwork(track);
+    const ui = getUI();
+
+    if (ui && typeof ui.getTrackArtwork === "function") {
+      return ui.getTrackArtwork(track);
     }
 
     return track && (
@@ -245,6 +352,7 @@
       track.cover ||
       track.cover_url ||
       track.image_url ||
+      track.image ||
       ""
     );
   }
@@ -255,23 +363,70 @@
     }
 
     const duration = Number(
-      track.duration ||
-      track.duration_seconds ||
-      track.durationSeconds ||
+      track.duration_seconds ??
+      track.durationSeconds ??
+      track.duration ??
       0
     );
 
-    if (window.ResonaUI) {
-      return window.ResonaUI.formatDuration(duration);
+    const ui = getUI();
+
+    if (ui && typeof ui.formatDuration === "function") {
+      return ui.formatDuration(duration);
     }
 
-    const seconds = Math.max(0, Math.floor(duration));
+    const seconds = Number.isFinite(duration)
+      ? Math.max(0, Math.floor(duration))
+      : 0;
 
     return (
       Math.floor(seconds / 60) +
       ":" +
       String(seconds % 60).padStart(2, "0")
     );
+  }
+
+  function normalizeList(value) {
+    if (Array.isArray(value)) {
+      return value;
+    }
+
+    if (!value || typeof value !== "object") {
+      return [];
+    }
+
+    if (Array.isArray(value.items)) {
+      return value.items;
+    }
+
+    if (Array.isArray(value.results)) {
+      return value.results;
+    }
+
+    if (Array.isArray(value.tracks)) {
+      return value.tracks;
+    }
+
+    if (Array.isArray(value.data)) {
+      return value.data;
+    }
+
+    return [];
+  }
+
+  function getLibraryMethod(method, fallback) {
+    const library = getLibrary();
+
+    if (!library || typeof library[method] !== "function") {
+      return fallback;
+    }
+
+    try {
+      return library[method]();
+    } catch (error) {
+      recordError(error, "library:" + method);
+      return fallback;
+    }
   }
 
   /* =========================================================
@@ -286,7 +441,10 @@
         "Required Resona modules are missing: " +
         missing.join(", ");
 
-      recordError(new Error(message), "module-validation");
+      recordError(
+        new Error(message),
+        "module-validation"
+      );
 
       return {
         success: false,
@@ -304,18 +462,6 @@
   /* =========================================================
      NAVIGATION
      ========================================================= */
-
-  const VALID_PAGES = new Set([
-    "home",
-    "explore",
-    "search",
-    "library",
-    "now-playing",
-    "artists",
-    "albums",
-    "playlists",
-    "settings"
-  ]);
 
   function normalizePage(page) {
     const normalized = String(page || "")
@@ -347,10 +493,10 @@
   }
 
   function getAllPageElements() {
-    const elements = getElements("[data-page]");
+    const declared = getElements("[data-page]");
 
-    if (elements.length) {
-      return elements;
+    if (declared.length) {
+      return declared;
     }
 
     return getElements(
@@ -365,12 +511,10 @@
     let matched = false;
 
     pages.forEach(function (element) {
-      const pageName = normalizePage(
-        element.dataset.page ||
-        element.id.replace(/-page$/, "")
-      );
+      const inferredName = element.dataset.page ||
+        element.id.replace(/-page$/, "");
 
-      const visible = pageName === normalized;
+      const visible = normalizePage(inferredName) === normalized;
 
       element.hidden = !visible;
 
@@ -387,6 +531,10 @@
       }
     });
 
+    /*
+     * If the HTML uses a single page container rather than
+     * multiple page sections, don't hide unrelated content.
+     */
     return matched;
   }
 
@@ -394,14 +542,15 @@
     getElements(
       "[data-navigate], [data-page-link], .nav-link"
     ).forEach(function (element) {
-      const destination = normalizePage(
+      const destination =
         element.dataset.navigate ||
         element.dataset.pageLink ||
         element.dataset.page ||
-        element.getAttribute("href")?.replace(/^#/, "")
-      );
+        (
+          element.getAttribute("href") || ""
+        ).replace(/^#/, "");
 
-      const active = destination === page;
+      const active = normalizePage(destination) === page;
 
       element.classList.toggle("is-active", active);
       element.classList.toggle("active", active);
@@ -456,17 +605,16 @@
       current: normalized
     });
 
-    announce("Opened " + normalized.replace(/-/g, " ") + " page.");
+    announce(
+      "Opened " + normalized.replace(/-/g, " ") + " page."
+    );
 
-    loadPage(normalized).catch(function (error) {
+    Promise.resolve(loadPage(normalized)).catch(function (error) {
       recordError(error, "page-loading:" + normalized);
     });
 
     if (!pageFound) {
-      warn(
-        "No matching page element was found for:",
-        normalized
-      );
+      warn("No matching page element was found for:", normalized);
     }
 
     return {
@@ -477,7 +625,13 @@
   }
 
   function handleNavigationClick(event) {
-    const link = event.target.closest(
+    const target = event.target;
+
+    if (!target || typeof target.closest !== "function") {
+      return;
+    }
+
+    const link = target.closest(
       "[data-navigate], [data-page-link], a[href^='#']"
     );
 
@@ -488,21 +642,23 @@
     const destination =
       link.dataset.navigate ||
       link.dataset.pageLink ||
-      link.getAttribute("href")?.replace(/^#/, "");
+      (link.getAttribute("href") || "").replace(/^#/, "");
 
     if (!destination) {
       return;
     }
 
-    const page = normalizePage(destination);
+    const normalized = String(destination)
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, "-");
 
-    if (!VALID_PAGES.has(page)) {
+    if (!VALID_PAGES.has(normalized)) {
       return;
     }
 
     event.preventDefault();
-
-    navigate(page);
+    navigate(normalized);
   }
 
   function handleHashChange() {
@@ -517,32 +673,8 @@
   }
 
   /* =========================================================
-     DATA ACCESS
+     DISCOVERY ACCESS
      ========================================================= */
-
-  function getDiscovery() {
-    return getModule("ResonaDiscovery");
-  }
-
-  function getLibrary() {
-    return getModule("ResonaLibrary");
-  }
-
-  function getPlayer() {
-    return getModule("ResonaPlayer");
-  }
-
-  function getSearch() {
-    return getModule("ResonaSearch");
-  }
-
-  function getUI() {
-    return getModule("ResonaUI");
-  }
-
-  function getAPI() {
-    return getModule("ResonaAPI");
-  }
 
   function callDiscovery(method, options) {
     const discovery = getDiscovery();
@@ -552,7 +684,9 @@
     }
 
     try {
-      return Promise.resolve(discovery[method](options));
+      return Promise.resolve(
+        discovery[method](options)
+      );
     } catch (error) {
       return Promise.reject(error);
     }
@@ -577,6 +711,7 @@
 
     artworkButton.type = "button";
     artworkButton.className = "resona-track-card__artwork-button";
+
     artworkButton.setAttribute(
       "aria-label",
       "Play " + getTrackTitle(track)
@@ -587,7 +722,12 @@
     image.className = "resona-track-card__artwork";
     image.alt = getTrackTitle(track) + " cover";
     image.loading = "lazy";
-    image.src = getArtwork(track);
+
+    const artwork = getArtwork(track);
+
+    if (artwork) {
+      image.src = artwork;
+    }
 
     image.onerror = function () {
       image.onerror = null;
@@ -629,12 +769,23 @@
 
       const library = getLibrary();
 
-      const liked = library &&
+      const liked = Boolean(
+        library &&
         typeof library.isLiked === "function" &&
-        library.isLiked(trackId);
+        library.isLiked(trackId)
+      );
 
       like.textContent = liked ? "♥" : "♡";
-      like.setAttribute("aria-pressed", liked ? "true" : "false");
+
+      like.setAttribute(
+        "aria-pressed",
+        liked ? "true" : "false"
+      );
+
+      like.setAttribute(
+        "aria-label",
+        liked ? "Unlike track" : "Like track"
+      );
 
       like.addEventListener("click", function () {
         if (!library || typeof library.toggleLike !== "function") {
@@ -642,14 +793,30 @@
           return;
         }
 
-        const result = library.toggleLike(track);
+        try {
+          const result = library.toggleLike(track);
 
-        if (result.success) {
-          like.textContent = result.liked ? "♥" : "♡";
+          if (!result || result.success === false) {
+            notify("Unable to update your liked tracks.", "error");
+            return;
+          }
+
+          const nowLiked = Boolean(result.liked);
+
+          like.textContent = nowLiked ? "♥" : "♡";
+
           like.setAttribute(
             "aria-pressed",
-            result.liked ? "true" : "false"
+            nowLiked ? "true" : "false"
           );
+
+          like.setAttribute(
+            "aria-label",
+            nowLiked ? "Unlike track" : "Like track"
+          );
+        } catch (error) {
+          recordError(error, "like-track");
+          notify("Unable to update your liked tracks.", "error");
         }
       });
 
@@ -666,9 +833,7 @@
       return ui.renderTrackCard(
         track,
         Object.assign(
-          {
-            onPlay: playTrack
-          },
+          { onPlay: playTrack },
           options || {}
         )
       );
@@ -686,7 +851,7 @@
       return false;
     }
 
-    const list = Array.isArray(tracks) ? tracks : [];
+    const list = normalizeList(tracks);
     const settings = options || {};
 
     element.replaceChildren();
@@ -771,15 +936,6 @@
         ],
         method: "getTrending",
         title: "Trending music"
-      },
-      {
-        name: "recently-played",
-        selectors: [
-          "#recently-played",
-          "[data-section='recently-played']"
-        ],
-        method: "getRecentlyPlayed",
-        title: "Recently played"
       }
     ];
 
@@ -792,26 +948,14 @@
 
       const ui = getUI();
 
-      if (ui) {
+      if (ui && typeof ui.showLoading === "function") {
         ui.showLoading(container, {
           message: "Loading " + section.title.toLowerCase() + "..."
         });
       }
 
       try {
-        let tracks;
-
-        if (section.name === "recently-played") {
-          tracks = getLibrary().getRecentlyPlayed(12);
-        } else {
-          tracks = await callDiscovery(section.method);
-        }
-
-        if (!Array.isArray(tracks)) {
-          tracks = Array.isArray(tracks && tracks.items)
-            ? tracks.items
-            : [];
-        }
+        const tracks = await callDiscovery(section.method);
 
         renderTracks(container, tracks, {
           showLike: true,
@@ -820,10 +964,9 @@
       } catch (error) {
         recordError(error, "home:" + section.name);
 
-        if (ui) {
+        if (ui && typeof ui.showErrorState === "function") {
           ui.showErrorState(container, {
-            message:
-              "We couldn't load this section. Please try again.",
+            message: "We couldn't load this section. Please try again.",
             onAction: function () {
               loadHome();
             }
@@ -831,6 +974,30 @@
         }
       }
     });
+
+    const recentContainer = findFirstElement([
+      "#recently-played",
+      "[data-section='recently-played']"
+    ]);
+
+    if (recentContainer) {
+      try {
+        const library = getLibrary();
+
+        const recent = library &&
+          typeof library.getRecentlyPlayed === "function"
+          ? library.getRecentlyPlayed(12)
+          : [];
+
+        renderTracks(recentContainer, recent, {
+          showLike: true,
+          emptyTitle: "Nothing played yet",
+          emptyMessage: "Tracks you play will appear here."
+        });
+      } catch (error) {
+        recordError(error, "home:recently-played");
+      }
+    }
 
     await Promise.allSettled(jobs);
   }
@@ -852,32 +1019,26 @@
 
     const ui = getUI();
 
-    if (ui) {
+    if (ui && typeof ui.showLoading === "function") {
       ui.showLoading(container, {
         message: "Discovering music..."
       });
     }
 
     try {
-      let tracks = await callDiscovery("getTracks");
-
-      if (!Array.isArray(tracks)) {
-        tracks = Array.isArray(tracks && tracks.items)
-          ? tracks.items
-          : [];
-      }
+      const tracks = await callDiscovery("getTracks");
 
       renderTracks(container, tracks, {
         showLike: true,
         showSave: true,
         emptyTitle: "Your discovery starts here",
         emptyMessage:
-          "When music is available, it will appear here."
+          "When catalogue music is available, it will appear here."
       });
     } catch (error) {
       recordError(error, "explore");
 
-      if (ui) {
+      if (ui && typeof ui.showErrorState === "function") {
         ui.showErrorState(container, {
           message: "We couldn't load Explore.",
           onAction: loadExplore
@@ -887,7 +1048,7 @@
   }
 
   /* =========================================================
-     SEARCH PAGE
+     SEARCH
      ========================================================= */
 
   function getSearchInput() {
@@ -924,15 +1085,25 @@
       return result.items;
     }
 
+    if (Array.isArray(result.results)) {
+      return result.results;
+    }
+
+    if (result.data && typeof result.data === "object") {
+      return normalizeSearchTracks(result.data);
+    }
+
     return [];
   }
 
-  async function performSearch(query) {
-    const search = getSearch();
-    const container = getSearchResultsContainer();
+  async function performSearch(query, options) {
+    const settings = options || {};
     const normalizedQuery = String(query || "").trim();
+    const requestId = ++state.searchRequestId;
 
     state.activeSearch = normalizedQuery;
+
+    const container = getSearchResultsContainer();
 
     if (!container) {
       return {
@@ -952,17 +1123,25 @@
 
     const ui = getUI();
 
-    if (ui) {
+    if (ui && typeof ui.showLoading === "function") {
       ui.showLoading(container, {
         message: "Searching music..."
       });
     }
 
     try {
+      const search = getSearch();
       let result;
 
       if (search && typeof search.search === "function") {
-        result = await search.search(normalizedQuery);
+        /*
+         * The options object allows the search module to apply
+         * supported filters without changing this coordinator.
+         */
+        result = await search.search(
+          normalizedQuery,
+          settings
+        );
       } else {
         const api = getAPI();
 
@@ -970,11 +1149,13 @@
           throw new Error("Search module is unavailable.");
         }
 
-        result = await api.search(normalizedQuery);
+        result = await api.search(
+          normalizedQuery,
+          settings
+        );
       }
 
-      // Don't render a stale response over a newer search.
-      if (normalizedQuery !== state.activeSearch) {
+      if (requestId !== state.searchRequestId) {
         return {
           success: false,
           stale: true
@@ -1004,7 +1185,7 @@
         raw: result
       };
     } catch (error) {
-      if (normalizedQuery !== state.activeSearch) {
+      if (requestId !== state.searchRequestId) {
         return {
           success: false,
           stale: true
@@ -1013,11 +1194,11 @@
 
       recordError(error, "search");
 
-      if (ui) {
+      if (ui && typeof ui.showErrorState === "function") {
         ui.showErrorState(container, {
           message: "Search failed. Please try again.",
           onAction: function () {
-            performSearch(normalizedQuery);
+            performSearch(normalizedQuery, settings);
           }
         });
       }
@@ -1046,17 +1227,15 @@
   }
 
   /* =========================================================
-     LIBRARY PAGE
+     LIBRARY
      ========================================================= */
 
   function renderLibrarySection(selectors, tracks, options) {
     const container = findFirstElement(selectors);
 
-    if (!container) {
-      return;
+    if (container) {
+      renderTracks(container, tracks, options);
     }
-
-    renderTracks(container, tracks, options);
   }
 
   function loadLibrary() {
@@ -1066,9 +1245,21 @@
       return;
     }
 
+    const liked = typeof library.getLiked === "function"
+      ? library.getLiked()
+      : [];
+
+    const saved = typeof library.getSaved === "function"
+      ? library.getSaved()
+      : [];
+
+    const history = typeof library.getHistory === "function"
+      ? library.getHistory({ tracksOnly: true })
+      : [];
+
     renderLibrarySection(
       ["#liked-tracks", "#library-liked", "[data-library='liked']"],
-      library.getLiked(),
+      liked,
       {
         showLike: true,
         emptyTitle: "No liked music yet",
@@ -1078,7 +1269,7 @@
 
     renderLibrarySection(
       ["#saved-tracks", "#library-saved", "[data-library='saved']"],
-      library.getSaved(),
+      saved,
       {
         showLike: true,
         showSave: true,
@@ -1086,10 +1277,6 @@
         emptyMessage: "Save music to return to it later."
       }
     );
-
-    const history = library.getHistory({
-      tracksOnly: true
-    });
 
     renderLibrarySection(
       [
@@ -1106,103 +1293,25 @@
     );
 
     emitAppEvent("library:rendered", {
-      summary: library.getSummary()
+      summary: typeof library.getSummary === "function"
+        ? library.getSummary()
+        : null
     });
   }
 
   /* =========================================================
-     ARTIST AND ALBUM PAGES
+     ARTISTS AND ALBUMS
      ========================================================= */
-
-  async function loadArtists() {
-    const container = findFirstElement([
-      "#artists-list",
-      "#artists-grid",
-      "[data-section='artists']"
-    ]);
-
-    if (!container) {
-      return;
-    }
-
-    const ui = getUI();
-
-    if (ui) {
-      ui.showLoading(container, {
-        message: "Loading artists..."
-      });
-    }
-
-    try {
-      let artists = await callDiscovery("getArtists");
-
-      if (!Array.isArray(artists)) {
-        artists = Array.isArray(artists && artists.items)
-          ? artists.items
-          : [];
-      }
-
-      renderSimpleEntityCards(container, artists, "artist");
-    } catch (error) {
-      recordError(error, "artists");
-
-      if (ui) {
-        ui.showErrorState(container, {
-          message: "We couldn't load artists.",
-          onAction: loadArtists
-        });
-      }
-    }
-  }
-
-  async function loadAlbums() {
-    const container = findFirstElement([
-      "#albums-list",
-      "#albums-grid",
-      "[data-section='albums']"
-    ]);
-
-    if (!container) {
-      return;
-    }
-
-    const ui = getUI();
-
-    if (ui) {
-      ui.showLoading(container, {
-        message: "Loading albums..."
-      });
-    }
-
-    try {
-      let albums = await callDiscovery("getAlbums");
-
-      if (!Array.isArray(albums)) {
-        albums = Array.isArray(albums && albums.items)
-          ? albums.items
-          : [];
-      }
-
-      renderSimpleEntityCards(container, albums, "album");
-    } catch (error) {
-      recordError(error, "albums");
-
-      if (ui) {
-        ui.showErrorState(container, {
-          message: "We couldn't load albums.",
-          onAction: loadAlbums
-        });
-      }
-    }
-  }
 
   function renderSimpleEntityCards(container, items, type) {
     container.replaceChildren();
 
-    if (!items.length) {
+    const list = normalizeList(items);
+
+    if (!list.length) {
       const ui = getUI();
 
-      if (ui) {
+      if (ui && typeof ui.showEmpty === "function") {
         ui.showEmpty(container, {
           icon: type === "artist" ? "♫" : "◉",
           title: "Nothing to show yet",
@@ -1216,7 +1325,7 @@
 
     const fragment = document.createDocumentFragment();
 
-    items.forEach(function (item) {
+    list.forEach(function (item) {
       if (!item || typeof item !== "object") {
         return;
       }
@@ -1228,21 +1337,20 @@
       const image = document.createElement("img");
 
       image.loading = "lazy";
-      image.alt = String(
-        item.name ||
-        item.title ||
-        type
-      );
+      image.alt = String(item.name || item.title || type);
 
       const artwork =
         item.image ||
         item.image_url ||
         item.artwork ||
         item.cover ||
-        item.cover_url;
+        item.cover_url ||
+        "";
 
-      if (getUI()) {
-        getUI().setSafeImage(image, artwork);
+      const ui = getUI();
+
+      if (ui && typeof ui.setSafeImage === "function") {
+        ui.setSafeImage(image, artwork);
       } else if (artwork) {
         image.src = artwork;
       }
@@ -1274,14 +1382,84 @@
     container.appendChild(fragment);
   }
 
+  async function loadArtists() {
+    const container = findFirstElement([
+      "#artists-list",
+      "#artists-grid",
+      "[data-section='artists']"
+    ]);
+
+    if (!container) {
+      return;
+    }
+
+    const ui = getUI();
+
+    if (ui && typeof ui.showLoading === "function") {
+      ui.showLoading(container, {
+        message: "Loading artists..."
+      });
+    }
+
+    try {
+      const artists = await callDiscovery("getArtists");
+
+      renderSimpleEntityCards(container, artists, "artist");
+    } catch (error) {
+      recordError(error, "artists");
+
+      if (ui && typeof ui.showErrorState === "function") {
+        ui.showErrorState(container, {
+          message: "We couldn't load artists.",
+          onAction: loadArtists
+        });
+      }
+    }
+  }
+
+  async function loadAlbums() {
+    const container = findFirstElement([
+      "#albums-list",
+      "#albums-grid",
+      "[data-section='albums']"
+    ]);
+
+    if (!container) {
+      return;
+    }
+
+    const ui = getUI();
+
+    if (ui && typeof ui.showLoading === "function") {
+      ui.showLoading(container, {
+        message: "Loading albums..."
+      });
+    }
+
+    try {
+      const albums = await callDiscovery("getAlbums");
+
+      renderSimpleEntityCards(container, albums, "album");
+    } catch (error) {
+      recordError(error, "albums");
+
+      if (ui && typeof ui.showErrorState === "function") {
+        ui.showErrorState(container, {
+          message: "We couldn't load albums.",
+          onAction: loadAlbums
+        });
+      }
+    }
+  }
+
   /* =========================================================
-     PLAYER INTEGRATION
+     PLAYBACK
      ========================================================= */
 
   async function playTrack(track, options) {
     const player = getPlayer();
 
-    if (!player) {
+    if (!player || typeof player.playTrack !== "function") {
       notify("The music player is unavailable.", "error");
 
       return {
@@ -1301,28 +1479,34 @@
       };
     }
 
-    if (typeof player.playTrack !== "function") {
-      notify("The player cannot play tracks yet.", "error");
-
-      return {
-        success: false,
-        message: "Playback method unavailable."
-      };
-    }
-
     try {
       const result = await player.playTrack(
         track,
         options || {}
       );
 
-      if (result && result.success === false) {
-        notify(
-          result.message || "Unable to play this track.",
-          "warning"
-        );
+      /*
+       * Recognize explicit failure in either common result format.
+       */
+      if (
+        result === false ||
+        (
+          result &&
+          typeof result === "object" &&
+          result.success === false
+        )
+      ) {
+        const message = result && result.message
+          ? result.message
+          : "Unable to play this track.";
 
-        return result;
+        notify(message, "warning");
+
+        return {
+          success: false,
+          message: message,
+          result: result
+        };
       }
 
       const library = getLibrary();
@@ -1388,8 +1572,16 @@
       "#now-playing-artwork",
       "#player-track-artwork"
     ].join(",")).forEach(function (element) {
-      if (element.tagName === "IMG" && getUI()) {
-        getUI().setSafeImage(element, artwork);
+      if (element.tagName !== "IMG") {
+        return;
+      }
+
+      const ui = getUI();
+
+      if (ui && typeof ui.setSafeImage === "function") {
+        ui.setSafeImage(element, artwork);
+      } else if (artwork) {
+        element.src = artwork;
       }
     });
   }
@@ -1402,7 +1594,7 @@
       return;
     }
 
-    const events = [
+    [
       "trackchange",
       "play",
       "pause",
@@ -1410,23 +1602,183 @@
       "timeupdate",
       "volumechange",
       "error"
-    ];
+    ].forEach(function (eventName) {
+      const unsubscribe = player.on(
+        eventName,
+        function (detail) {
+          emitAppEvent("player:" + eventName, detail);
 
-    events.forEach(function (eventName) {
-      const unsubscribe = player.on(eventName, function (detail) {
-        emitAppEvent("player:" + eventName, detail);
-
-        if (eventName === "trackchange" && detail) {
-          updateNowPlaying(
-            detail.track || detail
-          );
+          if (eventName === "trackchange" && detail) {
+            updateNowPlaying(detail.track || detail);
+          }
         }
-      });
+      );
 
       if (typeof unsubscribe === "function") {
         state.destroyHandlers.push(unsubscribe);
       }
     });
+  }
+
+  /* =========================================================
+     PLAY TRACK BY ID
+     ========================================================= */
+
+  async function playTrackById(trackId) {
+    const id = String(trackId || "").trim();
+
+    if (!id) {
+      return {
+        success: false,
+        message: "Track ID is required."
+      };
+    }
+
+    const library = getLibrary();
+    const candidates = [];
+
+    if (library) {
+      [
+        ["getLiked", []],
+        ["getSaved", []],
+        ["getRecentlyPlayed", [100]]
+      ].forEach(function (entry) {
+        const method = entry[0];
+        const args = entry[1];
+
+        if (typeof library[method] === "function") {
+          try {
+            const result = library[method].apply(library, args);
+
+            if (Array.isArray(result)) {
+              candidates.push.apply(candidates, result);
+            }
+          } catch (error) {
+            recordError(error, "find-local-track:" + method);
+          }
+        }
+      });
+    }
+
+    const localTrack = candidates.find(function (track) {
+      return getTrackId(track) === id;
+    });
+
+    if (localTrack) {
+      return playTrack(localTrack);
+    }
+
+    const api = getAPI();
+
+    if (api && typeof api.getTrack === "function") {
+      try {
+        const response = await api.getTrack(id);
+
+        const track = response && (
+          response.track ||
+          response.data ||
+          response
+        );
+
+        if (track && getTrackId(track)) {
+          return playTrack(track);
+        }
+      } catch (error) {
+        recordError(error, "load-track-by-id");
+      }
+    }
+
+    notify(
+      "Track not found. Try opening it from Explore.",
+      "warning"
+    );
+
+    return {
+      success: false,
+      message: "Track not found."
+    };
+  }
+
+  /* =========================================================
+     PLAYLISTS
+     ========================================================= */
+
+  function loadPlaylists() {
+    const library = getLibrary();
+
+    if (!library || typeof library.getPlaylists !== "function") {
+      return;
+    }
+
+    const container = findFirstElement([
+      "#playlists-list",
+      "#playlists-grid",
+      "[data-section='playlists']"
+    ]);
+
+    if (!container) {
+      return;
+    }
+
+    let playlists;
+
+    try {
+      playlists = library.getPlaylists();
+    } catch (error) {
+      recordError(error, "load-playlists");
+      return;
+    }
+
+    container.replaceChildren();
+
+    if (!Array.isArray(playlists) || !playlists.length) {
+      const ui = getUI();
+
+      if (ui && typeof ui.showEmpty === "function") {
+        ui.showEmpty(container, {
+          icon: "♫",
+          title: "No playlists yet",
+          message: "Your playlists will appear here when you create them."
+        });
+      }
+
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    playlists.forEach(function (playlist) {
+      if (!playlist || typeof playlist !== "object") {
+        return;
+      }
+
+      const card = document.createElement("article");
+
+      card.className = "resona-playlist-card";
+
+      const title = document.createElement("h3");
+
+      title.textContent = String(playlist.name || "Untitled playlist");
+
+      const description = document.createElement("p");
+
+      const trackIds = Array.isArray(playlist.trackIds)
+        ? playlist.trackIds
+        : Array.isArray(playlist.track_ids)
+          ? playlist.track_ids
+          : [];
+
+      description.textContent =
+        playlist.description ||
+        trackIds.length + " tracks";
+
+      card.appendChild(title);
+      card.appendChild(description);
+
+      fragment.appendChild(card);
+    });
+
+    container.appendChild(fragment);
   }
 
   /* =========================================================
@@ -1457,75 +1809,86 @@
         return loadPlaylists();
 
       case "now-playing":
-        return undefined;
-
       case "settings":
-        return undefined;
-
       default:
         return undefined;
     }
   }
 
-  function loadPlaylists() {
+  /* =========================================================
+     CLEAR LIBRARY ACTIONS
+     ========================================================= */
+
+  async function confirmAction(options) {
+    const ui = getUI();
+
+    if (ui && typeof ui.confirm === "function") {
+      return Boolean(await ui.confirm(options));
+    }
+
+    return window.confirm(
+      options.message || options.title || "Are you sure?"
+    );
+  }
+
+  async function clearHistoryWithConfirmation() {
     const library = getLibrary();
 
-    if (!library) {
+    if (!library || typeof library.clearHistory !== "function") {
+      notify("Listening history is unavailable.", "error");
       return;
     }
 
-    const container = findFirstElement([
-      "#playlists-list",
-      "#playlists-grid",
-      "[data-section='playlists']"
-    ]);
+    try {
+      const confirmed = await confirmAction({
+        title: "Clear listening history?",
+        message: "This removes listening history saved in this browser.",
+        confirmLabel: "Clear history",
+        cancelLabel: "Cancel"
+      });
 
-    if (!container) {
-      return;
-    }
-
-    const playlists = library.getPlaylists();
-
-    container.replaceChildren();
-
-    if (!playlists.length) {
-      const ui = getUI();
-
-      if (ui) {
-        ui.showEmpty(container, {
-          icon: "♫",
-          title: "No playlists yet",
-          message: "Your playlists will appear here when you create them."
-        });
+      if (!confirmed) {
+        return;
       }
 
+      library.clearHistory();
+      loadLibrary();
+
+      notify("Listening history cleared.", "success");
+    } catch (error) {
+      recordError(error, "clear-history");
+      notify("Could not clear listening history.", "error");
+    }
+  }
+
+  async function clearLikedWithConfirmation() {
+    const library = getLibrary();
+
+    if (!library || typeof library.clearLiked !== "function") {
+      notify("Liked tracks are unavailable.", "error");
       return;
     }
 
-    const fragment = document.createDocumentFragment();
+    try {
+      const confirmed = await confirmAction({
+        title: "Clear liked tracks?",
+        message: "This removes liked tracks saved in this browser.",
+        confirmLabel: "Clear liked tracks",
+        cancelLabel: "Cancel"
+      });
 
-    playlists.forEach(function (playlist) {
-      const card = document.createElement("article");
+      if (!confirmed) {
+        return;
+      }
 
-      card.className = "resona-playlist-card";
+      library.clearLiked();
+      loadLibrary();
 
-      const title = document.createElement("h3");
-
-      title.textContent = playlist.name;
-
-      const description = document.createElement("p");
-
-      description.textContent =
-        playlist.description ||
-        playlist.trackIds.length + " tracks";
-
-      card.appendChild(title);
-      card.appendChild(description);
-
-      fragment.appendChild(card);
-    });
-
-    container.appendChild(fragment);
+      notify("Liked tracks cleared.", "success");
+    } catch (error) {
+      recordError(error, "clear-liked");
+      notify("Could not clear liked tracks.", "error");
+    }
   }
 
   /* =========================================================
@@ -1550,6 +1913,7 @@
     const input = getSearchInput();
 
     if (!input) {
+      warn("Search input was not found in the HTML.");
       return;
     }
 
@@ -1574,14 +1938,19 @@
 
   function bindGlobalActions() {
     addHandler(document, "click", function (event) {
-      const button = event.target.closest(
-        "[data-resona-action]"
-      );
+      const target = event.target;
+
+      if (!target || typeof target.closest !== "function") {
+        return;
+      }
+
+      const button = target.closest("[data-resona-action]");
 
       if (!button) {
         return;
       }
 
+      const player = getPlayer();
       const action = button.dataset.resonaAction;
 
       switch (action) {
@@ -1592,48 +1961,71 @@
           break;
 
         case "pause":
-          safeCall(function () {
-            getPlayer().pause();
-          });
+          if (player && typeof player.pause === "function") {
+            safeCall(function () {
+              player.pause();
+            });
+          }
           break;
 
         case "resume":
-          safeCall(function () {
-            getPlayer().resume();
-          });
+          if (player && typeof player.resume === "function") {
+            safeCall(function () {
+              player.resume();
+            });
+          } else if (player && typeof player.play === "function") {
+            safeCall(function () {
+              player.play();
+            });
+          }
           break;
 
         case "next":
-          safeCall(function () {
-            getPlayer().next();
-          });
+          if (player && typeof player.next === "function") {
+            safeCall(function () {
+              player.next();
+            });
+          } else if (player && typeof player.playNext === "function") {
+            safeCall(function () {
+              player.playNext();
+            });
+          }
           break;
 
         case "previous":
-          safeCall(function () {
-            getPlayer().previous();
-          });
+          if (player && typeof player.previous === "function") {
+            safeCall(function () {
+              player.previous();
+            });
+          } else if (player && typeof player.playPrevious === "function") {
+            safeCall(function () {
+              player.playPrevious();
+            });
+          }
           break;
 
         case "shuffle":
-          safeCall(function () {
-            getPlayer().setShuffle(
-              button.getAttribute("aria-pressed") !== "true"
-            );
+          if (player && typeof player.setShuffle === "function") {
+            const nextValue =
+              button.getAttribute("aria-pressed") !== "true";
+
+            safeCall(function () {
+              player.setShuffle(nextValue);
+            });
 
             button.setAttribute(
               "aria-pressed",
-              button.getAttribute("aria-pressed") !== "true"
-                ? "true"
-                : "false"
+              nextValue ? "true" : "false"
             );
-          });
+          }
           break;
 
         case "repeat":
-          safeCall(function () {
-            getPlayer().toggleRepeat();
-          });
+          if (player && typeof player.toggleRepeat === "function") {
+            safeCall(function () {
+              player.toggleRepeat();
+            });
+          }
           break;
 
         case "clear-history":
@@ -1652,134 +2044,6 @@
           break;
       }
     });
-  }
-
-  async function playTrackById(trackId) {
-    const id = String(trackId || "").trim();
-
-    if (!id) {
-      return;
-    }
-
-    const library = getLibrary();
-
-    const candidates = [];
-
-    if (library) {
-      candidates.push.apply(candidates, library.getLiked());
-      candidates.push.apply(candidates, library.getSaved());
-      candidates.push.apply(
-        candidates,
-        library.getRecentlyPlayed(100)
-      );
-    }
-
-    const localTrack = candidates.find(function (track) {
-      return getTrackId(track) === id;
-    });
-
-    if (localTrack) {
-      return playTrack(localTrack);
-    }
-
-    const api = getAPI();
-
-    if (api && typeof api.getTrack === "function") {
-      try {
-        const response = await api.getTrack(id);
-        const track = response && (
-          response.track ||
-          response.data ||
-          response
-        );
-
-        if (track && getTrackId(track)) {
-          return playTrack(track);
-        }
-      } catch (error) {
-        recordError(error, "load-track-by-id");
-      }
-    }
-
-    notify("Track not found. Try opening it from Explore.", "warning");
-  }
-
-  async function clearHistoryWithConfirmation() {
-    const library = getLibrary();
-    const ui = getUI();
-
-    if (!library) {
-      return;
-    }
-
-    let confirmed = true;
-
-    if (ui && typeof ui.confirm === "function") {
-      confirmed = await ui.confirm({
-        title: "Clear listening history?",
-        message: "This will remove your locally saved listening history.",
-        confirmLabel: "Clear history",
-        cancelLabel: "Cancel"
-      });
-    } else {
-      confirmed = window.confirm(
-        "Clear your listening history?"
-      );
-    }
-
-    if (confirmed) {
-      library.clearHistory();
-      loadLibrary();
-
-      notify("Listening history cleared.", "success");
-    }
-  }
-
-  async function clearLikedWithConfirmation() {
-    const library = getLibrary();
-    const ui = getUI();
-
-    if (!library) {
-      return;
-    }
-
-    let confirmed = true;
-
-    if (ui && typeof ui.confirm === "function") {
-      confirmed = await ui.confirm({
-        title: "Clear liked tracks?",
-        message: "This will remove all your liked tracks from this browser.",
-        confirmLabel: "Clear liked tracks",
-        cancelLabel: "Cancel"
-      });
-    } else {
-      confirmed = window.confirm(
-        "Clear all liked tracks?"
-      );
-    }
-
-    if (confirmed) {
-      library.clearLiked();
-      loadLibrary();
-
-      notify("Liked tracks cleared.", "success");
-    }
-  }
-
-  /* =========================================================
-     APPLICATION EVENTS
-     ========================================================= */
-
-  function emitAppEvent(name, detail) {
-    try {
-      window.dispatchEvent(
-        new CustomEvent("resona:app:" + name, {
-          detail: detail === undefined ? null : detail
-        })
-      );
-    } catch (_) {
-      // Optional event system.
-    }
   }
 
   function bindLibraryEvents() {
@@ -1802,17 +2066,20 @@
       "playlist:deleted",
       "imported"
     ].forEach(function (eventName) {
-      const unsubscribe = library.on(eventName, function (detail) {
-        emitAppEvent("library:" + eventName, detail);
+      const unsubscribe = library.on(
+        eventName,
+        function (detail) {
+          emitAppEvent("library:" + eventName, detail);
 
-        if (state.currentPage === "library") {
-          loadLibrary();
-        }
+          if (state.currentPage === "library") {
+            loadLibrary();
+          }
 
-        if (state.currentPage === "playlists") {
-          loadPlaylists();
+          if (state.currentPage === "playlists") {
+            loadPlaylists();
+          }
         }
-      });
+      );
 
       if (typeof unsubscribe === "function") {
         state.destroyHandlers.push(unsubscribe);
@@ -1837,10 +2104,7 @@
     try {
       const discovery = getDiscovery();
 
-      if (
-        discovery &&
-        typeof discovery.refresh === "function"
-      ) {
+      if (discovery && typeof discovery.refresh === "function") {
         await discovery.refresh();
       }
 
@@ -1856,7 +2120,10 @@
     } catch (error) {
       recordError(error, "refresh");
 
-      notify("Resona could not refresh. Please try again.", "error");
+      notify(
+        "Resona could not refresh. Please try again.",
+        "error"
+      );
 
       return {
         success: false,
@@ -1916,7 +2183,7 @@
           recordError(error, "initial-discovery");
 
           warn(
-            "Initial catalogue refresh failed; the app will still open."
+            "Initial catalogue refresh failed; the application will still open."
           );
         }
       }
@@ -1942,7 +2209,10 @@
         version: APP_VERSION
       });
 
-      log("Initialized successfully. Version:", APP_VERSION);
+      log(
+        "Initialized successfully. Version:",
+        APP_VERSION
+      );
 
       return {
         success: true,
@@ -1951,12 +2221,10 @@
     } catch (error) {
       recordError(error, "initialization");
 
-      const message =
-        "Resona could not start. Check that all required JavaScript modules are loaded.";
-
-      if (getUI()) {
-        notify(message, "error");
-      }
+      notify(
+        "Resona could not start. Check that all required JavaScript modules are loaded.",
+        "error"
+      );
 
       return {
         success: false,
@@ -1971,8 +2239,8 @@
     state.destroyHandlers.forEach(function (cleanup) {
       try {
         cleanup();
-      } catch (_) {
-        // Continue cleanup.
+      } catch (error) {
+        warn("Cleanup failed.", error);
       }
     });
 
@@ -1980,6 +2248,9 @@
 
     clearTimeout(state.searchTimer);
 
+    state.searchTimer = null;
+    state.searchRequestId++;
+    state.activeSearch = "";
     state.initialized = false;
 
     emitAppEvent("destroyed", {
