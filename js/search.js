@@ -1,16 +1,18 @@
 /* =========================================================
    RESONA — SEARCH MODULE
    File: js/search.js
+   Version: 2.0.0
 
    Features:
    - Search tracks, artists, albums, and playlists
-   - Debounced live search
-   - Search history
+   - Debounced live search with settled promises
+   - Search history with local persistence
    - Search filters
-   - Local catalogue fallback
-   - API integration
+   - API search with local catalogue fallback
    - Cancellation of outdated requests
+   - Duplicate-result protection
    - Keyboard-friendly search events
+   - Safe handling of missing browser APIs
    - No fabricated results
 
    Exposes: window.ResonaSearch
@@ -26,6 +28,7 @@
     const MAX_SEARCH_HISTORY = 20;
 
     let debounceTimer = null;
+    let pendingDebouncedSearch = null;
     let activeController = null;
     let requestNumber = 0;
 
@@ -33,18 +36,21 @@
       query: "",
       loading: false,
       error: null,
+
       results: {
         tracks: [],
         artists: [],
         albums: [],
         playlists: []
       },
+
       filters: {
         type: "all",
         genre: "",
         country: "",
         language: ""
       },
+
       history: []
     };
 
@@ -69,11 +75,20 @@
         state: getState()
       };
 
-      global.dispatchEvent(
-        new CustomEvent(name, {
-          detail: payload
-        })
-      );
+      try {
+        if (typeof global.CustomEvent === "function") {
+          global.dispatchEvent(
+            new global.CustomEvent(name, {
+              detail: payload
+            })
+          );
+        }
+      } catch (error) {
+        console.warn(
+          "[Resona Search] Event dispatch failed:",
+          error
+        );
+      }
 
       const callbacks = listeners.get(name);
 
@@ -104,7 +119,7 @@
 
       listeners.get(name).add(callback);
 
-      return () => {
+      return function unsubscribe() {
         listeners.get(name)?.delete(callback);
       };
     }
@@ -114,20 +129,34 @@
        ===================================================== */
 
     function normalizeText(value) {
-      return String(value ?? "").trim();
+      return String(value ?? "")
+        .normalize("NFKC")
+        .trim();
     }
 
-    function normalizeLimit(value) {
+    function normalizeForSearch(value) {
+      return normalizeText(value).toLowerCase();
+    }
+
+    function normalizeLimit(value, fallback = DEFAULT_LIMIT) {
       const number = Number(value);
 
       if (!Number.isFinite(number)) {
-        return DEFAULT_LIMIT;
+        return fallback;
       }
 
       return Math.max(
         1,
         Math.min(MAX_LIMIT, Math.floor(number))
       );
+    }
+
+    function normalizeOffset(value) {
+      const number = Number(value);
+
+      return Number.isFinite(number)
+        ? Math.max(0, Math.floor(number))
+        : 0;
     }
 
     function emptyResults() {
@@ -137,6 +166,49 @@
         albums: [],
         playlists: []
       };
+    }
+
+    function isObject(value) {
+      return (
+        value !== null &&
+        typeof value === "object" &&
+        !Array.isArray(value)
+      );
+    }
+
+    function normalizeCollection(value) {
+      if (Array.isArray(value)) {
+        return value;
+      }
+
+      if (!isObject(value)) {
+        return [];
+      }
+
+      const collectionKeys = [
+        "items",
+        "results",
+        "tracks",
+        "artists",
+        "albums",
+        "playlists"
+      ];
+
+      for (const key of collectionKeys) {
+        if (Array.isArray(value[key])) {
+          return value[key];
+        }
+      }
+
+      if (Array.isArray(value.data)) {
+        return value.data;
+      }
+
+      if (isObject(value.data)) {
+        return normalizeCollection(value.data);
+      }
+
+      return [];
     }
 
     function normalizeResults(data) {
@@ -149,39 +221,49 @@
         };
       }
 
-      const result =
-        data?.data &&
-        !Array.isArray(data.data) &&
-        typeof data.data === "object"
-          ? data.data
-          : data || {};
+      if (!isObject(data)) {
+        return emptyResults();
+      }
 
-      return {
-        tracks: Array.isArray(result.tracks)
-          ? result.tracks
-          : [],
+      let result = data;
 
-        artists: Array.isArray(result.artists)
-          ? result.artists
-          : [],
+      if (isObject(data.data)) {
+        result = data.data;
+      }
 
-        albums: Array.isArray(result.albums)
-          ? result.albums
-          : [],
+      const output = emptyResults();
 
-        playlists: Array.isArray(result.playlists)
-          ? result.playlists
-          : []
-      };
+      for (const type of Object.keys(output)) {
+        if (Array.isArray(result[type])) {
+          output[type] = result[type];
+        } else if (type === "tracks") {
+          const fallback = normalizeCollection(result);
+
+          if (fallback.length) {
+            output.tracks = fallback;
+          }
+        }
+      }
+
+      return output;
     }
 
     function getItemId(item) {
+      if (!isObject(item)) {
+        return "";
+      }
+
       return String(
-        item?.id ||
-        item?.track_id ||
-        item?.artist_id ||
-        item?.album_id ||
-        item?.playlist_id ||
+        item.id ??
+        item.track_id ??
+        item.trackId ??
+        item.artist_id ??
+        item.artistId ??
+        item.album_id ??
+        item.albumId ??
+        item.playlist_id ??
+        item.playlistId ??
+        item.uuid ??
         ""
       ).trim();
     }
@@ -208,10 +290,7 @@
           .join(" ");
       }
 
-      if (
-        item?.artist &&
-        typeof item.artist === "object"
-      ) {
+      if (isObject(item?.artist)) {
         return normalizeText(item.artist.name);
       }
 
@@ -222,24 +301,96 @@
       );
     }
 
+    function normalizeValues(value) {
+      if (Array.isArray(value)) {
+        return value
+          .flatMap(item => {
+            if (typeof item === "string") {
+              return item.split(",");
+            }
+
+            if (isObject(item)) {
+              return [
+                item.name ||
+                item.title ||
+                item.value ||
+                ""
+              ];
+            }
+
+            return [];
+          })
+          .map(normalizeForSearch)
+          .filter(Boolean);
+      }
+
+      return String(value ?? "")
+        .split(",")
+        .map(normalizeForSearch)
+        .filter(Boolean);
+    }
+
     function getSearchableText(item) {
-      return [
-        item?.title,
-        item?.name,
-        item?.artist,
-        item?.artist_name,
-        item?.album,
-        item?.album_title,
-        item?.description,
-        item?.genre,
-        item?.language,
-        item?.country,
-        item?.region,
-        ...(Array.isArray(item?.genres)
-          ? item.genres
-          : [])
-      ]
+      if (!isObject(item)) {
+        return "";
+      }
+
+      const values = [
+        item.title,
+        item.name,
+        item.artist,
+        item.artist_name,
+        item.album,
+        item.album_title,
+        item.description,
+        item.genre,
+        item.language,
+        item.language_code,
+        item.country,
+        item.origin_country,
+        item.artist_country,
+        item.region,
+        item.continent,
+        item.music_region,
+        item.mood,
+        item.label
+      ];
+
+      for (const key of [
+        "artists",
+        "genres",
+        "moods",
+        "tags"
+      ]) {
+        const value = item[key];
+
+        if (Array.isArray(value)) {
+          value.forEach(entry => {
+            if (typeof entry === "string") {
+              values.push(entry);
+            } else if (isObject(entry)) {
+              values.push(
+                entry.name ||
+                entry.title ||
+                entry.value ||
+                ""
+              );
+            }
+          });
+        } else if (value) {
+          values.push(value);
+        }
+      }
+
+      return values
         .filter(Boolean)
+        .map(value => {
+          if (typeof value === "object") {
+            return value.name || value.title || "";
+          }
+
+          return String(value);
+        })
         .join(" ")
         .toLowerCase();
     }
@@ -247,29 +398,34 @@
     function deduplicate(items) {
       const seen = new Set();
 
-      return items.filter(item => {
-        if (!item || typeof item !== "object") {
-          return false;
-        }
+      return (Array.isArray(items) ? items : [])
+        .filter(item => {
+          if (!isObject(item)) {
+            return false;
+          }
 
-        const id = getItemId(item);
+          const id = getItemId(item);
 
-        if (!id) {
+          /*
+           * ID-less entities are retained because the
+           * backend may legitimately omit their IDs.
+           */
+          if (!id) {
+            return true;
+          }
+
+          if (seen.has(id)) {
+            return false;
+          }
+
+          seen.add(id);
+
           return true;
-        }
-
-        if (seen.has(id)) {
-          return false;
-        }
-
-        seen.add(id);
-
-        return true;
-      });
+        });
     }
 
     /* =====================================================
-       SEARCH HISTORY
+       STORAGE
        ===================================================== */
 
     function getStorageKey() {
@@ -294,7 +450,7 @@
       try {
         const storageKey = getStorageKey();
 
-        let saved = null;
+        let saved;
 
         if (
           global.ResonaUtils &&
@@ -305,9 +461,11 @@
             []
           );
         } else {
-          saved = JSON.parse(
-            global.localStorage.getItem(storageKey) || "[]"
-          );
+          saved = global.localStorage
+            ? JSON.parse(
+                global.localStorage.getItem(storageKey) || "[]"
+              )
+            : [];
         }
 
         state.history = Array.isArray(saved)
@@ -317,7 +475,12 @@
               .filter(Boolean)
               .slice(0, MAX_SEARCH_HISTORY)
           : [];
-      } catch {
+      } catch (error) {
+        console.warn(
+          "[Resona Search] Could not load history.",
+          error
+        );
+
         state.history = [];
       }
 
@@ -336,7 +499,11 @@
             storageKey,
             state.history
           );
-        } else {
+
+          return;
+        }
+
+        if (global.localStorage) {
           global.localStorage.setItem(
             storageKey,
             JSON.stringify(state.history)
@@ -344,7 +511,7 @@
         }
       } catch (error) {
         console.warn(
-          "[Resona Search] Search history could not be saved.",
+          "[Resona Search] History could not be saved.",
           error
         );
       }
@@ -360,7 +527,9 @@
       state.history = [
         value,
         ...state.history.filter(
-          item => item.toLowerCase() !== value.toLowerCase()
+          item =>
+            normalizeForSearch(item) !==
+            normalizeForSearch(value)
         )
       ].slice(0, MAX_SEARCH_HISTORY);
 
@@ -378,10 +547,10 @@
     }
 
     function removeFromHistory(query) {
-      const value = normalizeText(query).toLowerCase();
+      const value = normalizeForSearch(query);
 
       state.history = state.history.filter(
-        item => item.toLowerCase() !== value
+        item => normalizeForSearch(item) !== value
       );
 
       saveHistory();
@@ -414,13 +583,16 @@
         ...state.filters
       };
 
-      ["type", "genre", "country", "language"].forEach(
-        key => {
-          if (key in filters) {
-            next[key] = normalizeText(filters[key]);
-          }
+      [
+        "type",
+        "genre",
+        "country",
+        "language"
+      ].forEach(key => {
+        if (key in filters) {
+          next[key] = normalizeText(filters[key]);
         }
-      );
+      });
 
       const allowedTypes = [
         "all",
@@ -468,40 +640,46 @@
       const filters = state.filters;
 
       if (filters.genre) {
-        const genres = Array.isArray(item?.genres)
-          ? item.genres
-          : String(item?.genre || "").split(",");
+        const genres = normalizeValues(
+          item?.genres ?? item?.genre
+        );
 
         if (
-          !genres.some(
-            genre =>
-              normalizeText(genre).toLowerCase() ===
-              filters.genre.toLowerCase()
+          !genres.includes(
+            normalizeForSearch(filters.genre)
           )
         ) {
           return false;
         }
       }
 
-      if (
-        filters.country &&
-        normalizeText(
+      if (filters.country) {
+        const country = normalizeForSearch(
           item?.country ||
           item?.origin_country ||
-          item?.artist_country
-        ).toLowerCase() !== filters.country.toLowerCase()
-      ) {
-        return false;
+          item?.artist_country ||
+          ""
+        );
+
+        if (
+          country !== normalizeForSearch(filters.country)
+        ) {
+          return false;
+        }
       }
 
-      if (
-        filters.language &&
-        normalizeText(
+      if (filters.language) {
+        const language = normalizeForSearch(
           item?.language ||
-          item?.language_code
-        ).toLowerCase() !== filters.language.toLowerCase()
-      ) {
-        return false;
+          item?.language_code ||
+          ""
+        );
+
+        if (
+          language !== normalizeForSearch(filters.language)
+        ) {
+          return false;
+        }
       }
 
       return true;
@@ -521,22 +699,36 @@
 
       return {
         ...emptyResults(),
-        [state.filters.type]: filtered[state.filters.type]
+        [state.filters.type]:
+          filtered[state.filters.type]
       };
     }
 
     /* =====================================================
-       LOCAL CATALOGUE FALLBACK
+       LOCAL CATALOGUE
        ===================================================== */
 
     function getLocalCollection(key) {
       const appState = global.ResonaState || {};
 
       const possibleKeys = {
-        tracks: ["tracks", "allTracks", "catalogue"],
-        artists: ["artists", "allArtists"],
-        albums: ["albums", "allAlbums"],
-        playlists: ["playlists", "allPlaylists"]
+        tracks: [
+          "tracks",
+          "allTracks",
+          "catalogue"
+        ],
+        artists: [
+          "artists",
+          "allArtists"
+        ],
+        albums: [
+          "albums",
+          "allAlbums"
+        ],
+        playlists: [
+          "playlists",
+          "allPlaylists"
+        ]
       };
 
       for (const candidate of possibleKeys[key] || []) {
@@ -545,28 +737,53 @@
         }
       }
 
+      /*
+       * Also accept collections exposed by discovery.
+       */
+      const discovery = global.ResonaDiscovery;
+
+      if (discovery) {
+        const getterNames = {
+          tracks: "getTracks",
+          artists: "getArtists",
+          albums: "getAlbums",
+          playlists: "getPlaylists"
+        };
+
+        const getter = discovery[getterNames[key]];
+
+        if (typeof getter === "function") {
+          try {
+            return getter.call(discovery, {
+              limit: MAX_LIMIT
+            });
+          } catch (error) {
+            console.warn(
+              "[Resona Search] Discovery fallback failed.",
+              error
+            );
+          }
+        }
+      }
+
       return [];
     }
 
     function searchLocal(query, limit) {
-      const normalizedQuery = query.toLowerCase();
+      const normalizedQuery = normalizeForSearch(query);
 
-      const result = {
-        tracks: [],
-        artists: [],
-        albums: [],
-        playlists: []
-      };
+      const result = emptyResults();
 
-      Object.keys(result).forEach(type => {
-        result[type] = getLocalCollection(type)
+      for (const type of Object.keys(result)) {
+        result[type] = deduplicate(
+          getLocalCollection(type)
+        )
           .filter(item => {
-            return getSearchableText(item).includes(
-              normalizedQuery
-            );
+            return getSearchableText(item)
+              .includes(normalizedQuery);
           })
           .slice(0, limit);
-      });
+      }
 
       return result;
     }
@@ -582,21 +799,92 @@
         return null;
       }
 
-      const result = await api.search(query, {
-        limit: normalizeLimit(options.limit),
-        offset: Math.max(
-          0,
-          Number(options.offset) || 0
-        ),
-        type: state.filters.type === "all"
-          ? undefined
-          : state.filters.type,
-        genre: state.filters.genre || undefined,
-        region: state.filters.country || undefined,
-        signal: options.signal
-      });
+      const filters = state.filters;
 
-      return normalizeResults(result);
+      const requestOptions = {
+        limit: normalizeLimit(options.limit),
+        offset: normalizeOffset(options.offset),
+        signal: options.signal
+      };
+
+      if (filters.type !== "all") {
+        requestOptions.type = filters.type;
+      }
+
+      if (filters.genre) {
+        requestOptions.genre = filters.genre;
+      }
+
+      /*
+       * Keep country and region separate.
+       * The backend can ignore unsupported fields, but
+       * we must not send a country as a region.
+       */
+      if (filters.country) {
+        requestOptions.country = filters.country;
+      }
+
+      if (filters.language) {
+        requestOptions.language = filters.language;
+      }
+
+      const response = await api.search(
+        query,
+        requestOptions
+      );
+
+      return normalizeResults(response);
+    }
+
+    /* =====================================================
+       REQUEST MANAGEMENT
+       ===================================================== */
+
+    function abortActiveRequest() {
+      if (activeController) {
+        try {
+          activeController.abort();
+        } catch {
+          // Ignore abort errors.
+        }
+
+        activeController = null;
+      }
+    }
+
+    function settlePendingDebouncedSearch(
+      action,
+      value
+    ) {
+      if (!pendingDebouncedSearch) {
+        return;
+      }
+
+      const pending = pendingDebouncedSearch;
+
+      pendingDebouncedSearch = null;
+
+      if (action === "resolve") {
+        pending.resolve(value);
+      } else {
+        pending.reject(value);
+      }
+    }
+
+    function cancelDebounceOnly() {
+      if (debounceTimer !== null) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+
+      /*
+       * Resolve the superseded promise with the current
+       * results instead of leaving it pending forever.
+       */
+      settlePendingDebouncedSearch(
+        "resolve",
+        getResults()
+      );
     }
 
     /* =====================================================
@@ -605,6 +893,16 @@
 
     async function search(query, options = {}) {
       const normalizedQuery = normalizeText(query);
+
+      /*
+       * Every direct search supersedes any pending
+       * debounced search.
+       */
+      cancelDebounceOnly();
+
+      const currentRequest = ++requestNumber;
+
+      abortActiveRequest();
 
       state.query = normalizedQuery;
       state.error = null;
@@ -619,22 +917,21 @@
 
         emit(EVENTS.RESULTS, {
           query: "",
-          results: emptyResults(),
+          results: getResults(),
           total: 0
         });
 
-        return emptyResults();
+        emit(EVENTS.LOADING, {
+          loading: false,
+          query: ""
+        });
+
+        return getResults();
       }
 
-      const currentRequest = ++requestNumber;
+      const controller = new AbortController();
 
-      if (activeController) {
-        activeController.abort();
-      }
-
-      activeController = new AbortController();
-
-      const controller = activeController;
+      activeController = controller;
 
       if (options.signal) {
         if (options.signal.aborted) {
@@ -656,7 +953,8 @@
       });
 
       try {
-        let results;
+        let results = null;
+        let backendError = null;
 
         try {
           results = await searchBackend(
@@ -671,25 +969,43 @@
             error?.name === "AbortError" ||
             controller.signal.aborted
           ) {
-            return state.results;
+            return getResults();
           }
 
-          /*
-           * Do not silently disguise a failed backend
-           * request as a successful catalogue search.
-           */
-          throw error;
+          backendError = error;
+
+          console.warn(
+            "[Resona Search] Backend search failed; trying local catalogue.",
+            error
+          );
         }
 
-        if (results === null) {
+        /*
+         * Do not let an outdated request alter current
+         * results or state.
+         */
+        if (
+          currentRequest !== requestNumber ||
+          controller.signal.aborted
+        ) {
+          return getResults();
+        }
+
+        /*
+         * A missing API or failed API uses only catalogue
+         * entries already available in the browser.
+         */
+        if (
+          results === null ||
+          (
+            backendError &&
+            getTotalResults(results) === 0
+          )
+        ) {
           results = searchLocal(
             normalizedQuery,
             normalizeLimit(options.limit)
           );
-        }
-
-        if (currentRequest !== requestNumber) {
-          return state.results;
         }
 
         const deduplicated = {
@@ -701,6 +1017,20 @@
 
         state.results = applyFilters(deduplicated);
 
+        /*
+         * Keep the failure visible when the backend failed
+         * and no local results could be found.
+         */
+        if (
+          backendError &&
+          getTotalResults(state.results) === 0
+        ) {
+          state.error = {
+            message:
+              "Online search is unavailable, and no matching local results were found."
+          };
+        }
+
         if (options.saveHistory !== false) {
           addToHistory(normalizedQuery);
         }
@@ -708,20 +1038,30 @@
         emit(EVENTS.RESULTS, {
           query: normalizedQuery,
           results: getResults(),
-          total: getTotal()
+          total: getTotal(),
+          offlineFallback: Boolean(backendError)
         });
+
+        if (state.error) {
+          emit(EVENTS.ERROR, {
+            query: normalizedQuery,
+            error: state.error
+          });
+        }
 
         return getResults();
       } catch (error) {
         if (
           error?.name === "AbortError" ||
-          controller.signal.aborted
+          controller.signal.aborted ||
+          currentRequest !== requestNumber
         ) {
-          return state.results;
+          return getResults();
         }
 
         state.error = {
-          message: error?.message ||
+          message:
+            error?.message ||
             "Search could not be completed."
         };
 
@@ -735,6 +1075,10 @@
         if (currentRequest === requestNumber) {
           state.loading = false;
 
+          if (activeController === controller) {
+            activeController = null;
+          }
+
           emit(EVENTS.LOADING, {
             loading: false,
             query: normalizedQuery
@@ -743,37 +1087,102 @@
       }
     }
 
+    function getTotalResults(results) {
+      if (!results) {
+        return 0;
+      }
+
+      return [
+        results.tracks,
+        results.artists,
+        results.albums,
+        results.playlists
+      ].reduce((total, collection) => {
+        return total + (
+          Array.isArray(collection)
+            ? collection.length
+            : 0
+        );
+      }, 0);
+    }
+
     /* =====================================================
        DEBOUNCED SEARCH
        ===================================================== */
 
     function searchDebounced(query, options = {}) {
-      clearTimeout(debounceTimer);
+      cancelDebounceOnly();
 
       return new Promise((resolve, reject) => {
-        debounceTimer = setTimeout(() => {
-          search(query, options)
-            .then(resolve)
-            .catch(reject);
-        }, Math.max(
+        pendingDebouncedSearch = {
+          resolve,
+          reject
+        };
+
+        const delay = Math.max(
           0,
-          Number(options.delay ?? DEBOUNCE_DELAY)
-        ));
+          Math.min(
+            5000,
+            Number(options.delay ?? DEBOUNCE_DELAY) || 0
+          )
+        );
+
+        debounceTimer = setTimeout(async () => {
+          debounceTimer = null;
+
+          const pending = pendingDebouncedSearch;
+
+          pendingDebouncedSearch = null;
+
+          try {
+            const result = await search(query, options);
+
+            pending?.resolve(result);
+          } catch (error) {
+            pending?.reject(error);
+          }
+        }, delay);
       });
     }
 
-    function cancelSearch() {
-      clearTimeout(debounceTimer);
+    /* =====================================================
+       CANCEL AND CLEAR
+       ===================================================== */
 
-      debounceTimer = null;
+    function cancelSearch() {
+      cancelDebounceOnly();
+
       requestNumber++;
 
-      if (activeController) {
-        activeController.abort();
-        activeController = null;
-      }
+      abortActiveRequest();
 
       state.loading = false;
+
+      emit(EVENTS.LOADING, {
+        loading: false,
+        query: state.query,
+        cancelled: true
+      });
+    }
+
+    function clearResults() {
+      cancelSearch();
+
+      state.query = "";
+      state.error = null;
+      state.results = emptyResults();
+
+      emit(EVENTS.QUERY_CHANGE, {
+        query: ""
+      });
+
+      emit(EVENTS.RESULTS, {
+        query: "",
+        results: getResults(),
+        total: 0
+      });
+
+      return getResults();
     }
 
     /* =====================================================
@@ -790,42 +1199,23 @@
     }
 
     function getTotal() {
-      return (
-        state.results.tracks.length +
-        state.results.artists.length +
-        state.results.albums.length +
-        state.results.playlists.length
-      );
+      return getTotalResults(state.results);
     }
 
     function getState() {
       return {
         query: state.query,
         loading: state.loading,
+
         error: state.error
           ? { ...state.error }
           : null,
+
         results: getResults(),
         total: getTotal(),
         filters: getFilters(),
         history: getHistory()
       };
-    }
-
-    function clearResults() {
-      cancelSearch();
-
-      state.query = "";
-      state.error = null;
-      state.results = emptyResults();
-
-      emit(EVENTS.RESULTS, {
-        query: "",
-        results: getResults(),
-        total: 0
-      });
-
-      return getResults();
     }
 
     /* =====================================================
