@@ -1,20 +1,26 @@
 /* =========================================================
    RESONA — MUSIC LIBRARY
    File: js/library.js
+   Version: 2.0.0
 
    Features:
    - Like and unlike tracks
    - Save and remove tracks
-   - Listening history
-   - Recently played tracks
-   - Search within the library
+   - Listening history and recently played tracks
+   - Search across library collections
+   - Create and manage playlists
+   - Playlist tracks retained independently of other collections
    - Import and export library data
-   - Clear history and library events
-   - Persistent storage with localStorage
-   - Works with ResonaUtils and ResonaState when available
+   - Persistent localStorage support
+   - ResonaUtils and ResonaState compatibility
+   - Event subscriptions
+   - Storage and import validation
 
    Public API:
    window.ResonaLibrary
+
+   Compatibility:
+   Existing storage keys and public method names are preserved.
    ========================================================= */
 
 (function (window, document) {
@@ -25,9 +31,13 @@
     return;
   }
 
-  const LIBRARY_VERSION = 1;
+  const LIBRARY_VERSION = 2;
   const MAX_HISTORY = 500;
   const MAX_SAVED_TRACKS = 2000;
+  const MAX_PLAYLISTS = 500;
+  const MAX_PLAYLIST_TRACKS = 5000;
+  const MAX_PLAYLIST_NAME = 80;
+  const MAX_DESCRIPTION = 1000;
 
   const STORAGE_KEYS = {
     liked: "resona_liked_tracks",
@@ -44,6 +54,17 @@
   let savedTracks = [];
   let history = [];
   let playlists = [];
+
+  /*
+   * Independent track cache.
+   *
+   * This allows a playlist to retain its track information even
+   * when that track is removed from liked music, saved music,
+   * or listening history.
+   *
+   * Existing playlist records are migrated when possible.
+   */
+  let trackCache = new Map();
 
   /* =========================================================
      UTILITIES
@@ -64,12 +85,12 @@
       "_" +
       Date.now().toString(36) +
       "_" +
-      Math.random().toString(36).slice(2, 10)
+      Math.random().toString(36).slice(2, 12)
     );
   }
 
   function clone(value) {
-    if (value == null) {
+    if (value === undefined || value === null) {
       return value;
     }
 
@@ -86,6 +107,19 @@
     }
 
     return String(value).trim();
+  }
+
+  function isPlainObject(value) {
+    if (!value || typeof value !== "object") {
+      return false;
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+
+    return (
+      prototype === Object.prototype ||
+      prototype === null
+    );
   }
 
   function getTrackId(track) {
@@ -113,46 +147,110 @@
       return null;
     }
 
-    return Object.assign({}, clone(track), {
+    const normalized = Object.assign({}, clone(track), {
       id: id
     });
+
+    /*
+     * Remove legacy ID aliases from the normalized identity only
+     * when they are empty. Keep meaningful original metadata.
+     */
+    return normalized;
+  }
+
+  function normalizeDate(value, fallback) {
+    if (value !== undefined && value !== null && value !== "") {
+      const parsed = new Date(value);
+
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toISOString();
+      }
+    }
+
+    return fallback || new Date().toISOString();
   }
 
   function getStorageKey(name) {
     try {
+      const config = window.ResonaConfig;
+
       if (
-        window.ResonaConfig &&
-        window.ResonaConfig.storage &&
-        window.ResonaConfig.storage.keys &&
-        window.ResonaConfig.storage.keys[name]
+        config &&
+        config.storage &&
+        config.storage.keys &&
+        config.storage.keys[name]
       ) {
-        return window.ResonaConfig.storage.keys[name];
+        return config.storage.keys[name];
       }
 
       if (
-        window.ResonaConfig &&
-        window.ResonaConfig.storagePrefix
+        config &&
+        typeof config.storagePrefix === "string" &&
+        config.storagePrefix
       ) {
-        return window.ResonaConfig.storagePrefix + name;
+        return config.storagePrefix + name;
       }
     } catch (_) {
-      // Fall back to the default key.
+      // Continue using the original default keys.
     }
 
     return STORAGE_KEYS[name] || ("resona_" + name);
+  }
+
+  function emit(eventName, detail) {
+    const payload = {
+      type: eventName,
+      detail: detail === undefined ? null : detail,
+      timestamp: new Date().toISOString()
+    };
+
+    const callbacks = listeners.get(eventName);
+
+    if (callbacks) {
+      Array.from(callbacks).forEach(function (callback) {
+        try {
+          callback(payload.detail, payload);
+        } catch (error) {
+          console.error(
+            "[Resona Library] Event listener failed:",
+            error
+          );
+        }
+      });
+    }
+
+    try {
+      if (typeof window.CustomEvent === "function") {
+        window.dispatchEvent(
+          new window.CustomEvent(
+            "resona:library:" + eventName,
+            {
+              detail: payload
+            }
+          )
+        );
+      }
+    } catch (_) {
+      // Custom events are optional.
+    }
   }
 
   function readStorage(name, fallback) {
     const defaultValue =
       fallback === undefined ? [] : fallback;
 
+    const key = getStorageKey(name);
+
+    /*
+     * Try the project's shared storage utility first.
+     */
     try {
       if (
         window.ResonaUtils &&
         typeof window.ResonaUtils.readStorage === "function"
       ) {
         const result = window.ResonaUtils.readStorage(
-          getStorageKey(name),
+          key,
           defaultValue
         );
 
@@ -167,12 +265,13 @@
       );
     }
 
+    /*
+     * Fall back to localStorage.
+     */
     try {
-      const raw = window.localStorage.getItem(
-        getStorageKey(name)
-      );
+      const raw = window.localStorage.getItem(key);
 
-      if (!raw) {
+      if (raw === null || raw === "") {
         return defaultValue;
       }
 
@@ -189,21 +288,29 @@
   }
 
   function writeStorage(name, value) {
+    const key = getStorageKey(name);
+
+    /*
+     * Try the shared storage utility first.
+     */
     try {
       if (
         window.ResonaUtils &&
         typeof window.ResonaUtils.writeStorage === "function"
       ) {
         const result = window.ResonaUtils.writeStorage(
-          getStorageKey(name),
+          key,
           value
         );
 
-        if (result === false) {
-          throw new Error("Storage utility reported failure.");
+        if (result !== false) {
+          return true;
         }
 
-        return true;
+        console.warn(
+          "[Resona Library] Storage utility reported failure:",
+          name
+        );
       }
     } catch (error) {
       console.warn(
@@ -212,9 +319,12 @@
       );
     }
 
+    /*
+     * Fall back to localStorage.
+     */
     try {
       window.localStorage.setItem(
-        getStorageKey(name),
+        key,
         JSON.stringify(value)
       );
 
@@ -228,7 +338,10 @@
 
       emit("storage:error", {
         key: name,
-        message: "Could not save library data."
+        message: "Could not save library data.",
+        reason: error && error.name
+          ? error.name
+          : "StorageError"
       });
 
       return false;
@@ -243,18 +356,162 @@
     const result = [];
     const seen = new Set();
 
-    for (const item of items) {
+    items.forEach(function (item) {
       const track = normalizeTrack(item);
 
       if (!track || seen.has(track.id)) {
-        continue;
+        return;
       }
 
       seen.add(track.id);
       result.push(track);
-    }
+    });
 
     return result;
+  }
+
+  function normalizeTrackIds(values) {
+    if (!Array.isArray(values)) {
+      return [];
+    }
+
+    const result = [];
+    const seen = new Set();
+
+    values.forEach(function (value) {
+      const id =
+        value && typeof value === "object"
+          ? getTrackId(value)
+          : normalizeId(value);
+
+      if (!id || seen.has(id)) {
+        return;
+      }
+
+      seen.add(id);
+      result.push(id);
+
+      if (result.length >= MAX_PLAYLIST_TRACKS) {
+        return;
+      }
+    });
+
+    return result.slice(0, MAX_PLAYLIST_TRACKS);
+  }
+
+  function normalizePlaylist(playlist) {
+    if (!playlist || typeof playlist !== "object") {
+      return null;
+    }
+
+    const name = String(playlist.name || "").trim();
+
+    if (!name) {
+      return null;
+    }
+
+    const now = new Date().toISOString();
+
+    return {
+      id: normalizeId(playlist.id) || createId("playlist"),
+      name: name.slice(0, MAX_PLAYLIST_NAME),
+      description: String(
+        playlist.description || ""
+      ).trim().slice(0, MAX_DESCRIPTION),
+      trackIds: normalizeTrackIds(
+        playlist.trackIds || playlist.track_ids || []
+      ),
+      createdAt: normalizeDate(
+        playlist.createdAt || playlist.created_at,
+        now
+      ),
+      updatedAt: normalizeDate(
+        playlist.updatedAt || playlist.updated_at,
+        now
+      )
+    };
+  }
+
+  function normalizePlaylists(items) {
+    if (!Array.isArray(items)) {
+      return [];
+    }
+
+    const result = [];
+    const seenIds = new Set();
+    const seenNames = new Set();
+
+    items.forEach(function (item) {
+      if (result.length >= MAX_PLAYLISTS) {
+        return;
+      }
+
+      const playlist = normalizePlaylist(item);
+
+      if (!playlist) {
+        return;
+      }
+
+      let id = playlist.id;
+
+      if (seenIds.has(id)) {
+        id = createId("playlist");
+        playlist.id = id;
+      }
+
+      const normalizedName = playlist.name.toLowerCase();
+
+      if (seenNames.has(normalizedName)) {
+        return;
+      }
+
+      seenIds.add(id);
+      seenNames.add(normalizedName);
+      result.push(playlist);
+    });
+
+    return result;
+  }
+
+  function normalizeHistory(items) {
+    if (!Array.isArray(items)) {
+      return [];
+    }
+
+    const result = [];
+    const seen = new Set();
+
+    items.forEach(function (entry) {
+      if (!entry || typeof entry !== "object") {
+        return;
+      }
+
+      const track = normalizeTrack(entry.track || entry);
+
+      if (!track) {
+        return;
+      }
+
+      /*
+       * Keep only the newest history entry for each track.
+       */
+      if (seen.has(track.id)) {
+        return;
+      }
+
+      seen.add(track.id);
+
+      result.push({
+        track: track,
+        playedAt: normalizeDate(
+          entry.playedAt ||
+          entry.played_at ||
+          entry.timestamp
+        )
+      });
+    });
+
+    return result.slice(0, MAX_HISTORY);
   }
 
   function syncState() {
@@ -264,6 +521,7 @@
 
     try {
       window.ResonaState.likedTracks = clone(likedTracks);
+      window.ResonaState.savedTracks = clone(savedTracks);
       window.ResonaState.history = clone(history);
 
       if (
@@ -278,6 +536,9 @@
 
         window.ResonaState.library.history =
           clone(history);
+
+        window.ResonaState.library.playlists =
+          clone(playlists);
       }
     } catch (error) {
       console.warn(
@@ -287,55 +548,28 @@
     }
   }
 
-  function emit(eventName, detail) {
-    const payload = {
-      type: eventName,
-      detail: detail === undefined ? null : detail,
-      timestamp: new Date().toISOString()
-    };
-
-    const callbacks = listeners.get(eventName);
-
-    if (callbacks) {
-      for (const callback of callbacks) {
-        try {
-          callback(payload.detail, payload);
-        } catch (error) {
-          console.error(
-            "[Resona Library] Event listener failed:",
-            error
-          );
-        }
-      }
-    }
-
-    try {
-      if (typeof window.CustomEvent === "function") {
-        window.dispatchEvent(
-          new CustomEvent("resona:library:" + eventName, {
-            detail: payload
-          })
-        );
-      }
-    } catch (_) {
-      // Event dispatch is optional.
-    }
-  }
-
   function persistAll() {
-    const likedSaved = writeStorage("liked", likedTracks);
-    const savedSaved = writeStorage("saved", savedTracks);
-    const historySaved = writeStorage("history", history);
-    const playlistsSaved = writeStorage("playlists", playlists);
+    const results = [
+      writeStorage("liked", likedTracks),
+      writeStorage("saved", savedTracks),
+      writeStorage("history", history),
+      writeStorage("playlists", playlists),
+      writeStorage("trackCache", Array.from(trackCache.values())),
+      writeStorage("version", LIBRARY_VERSION)
+    ];
 
     syncState();
 
-    return (
-      likedSaved &&
-      savedSaved &&
-      historySaved &&
-      playlistsSaved
-    );
+    const success = results.every(Boolean);
+
+    if (!success) {
+      emit("storage:partial-failure", {
+        message:
+          "Some library data could not be saved. Check available browser storage."
+      });
+    }
+
+    return success;
   }
 
   function findTrackIndex(collection, trackId) {
@@ -350,15 +584,70 @@
     });
   }
 
-  function removeTrackFromCollection(collection, trackId) {
-    const index = findTrackIndex(collection, trackId);
+  function rememberTrack(track) {
+    const normalized = normalizeTrack(track);
 
-    if (index === -1) {
-      return false;
+    if (!normalized) {
+      return null;
     }
 
-    collection.splice(index, 1);
-    return true;
+    trackCache.set(normalized.id, normalized);
+
+    return normalized;
+  }
+
+  function rememberTracks(items) {
+    items.forEach(function (track) {
+      rememberTrack(track);
+    });
+  }
+
+  function getTrackFromCollections(trackId) {
+    const id = normalizeId(trackId);
+
+    if (!id) {
+      return null;
+    }
+
+    const cached = trackCache.get(id);
+
+    if (cached) {
+      return clone(cached);
+    }
+
+    const liked = likedTracks.find(function (track) {
+      return track.id === id;
+    });
+
+    if (liked) {
+      return clone(liked);
+    }
+
+    const saved = savedTracks.find(function (track) {
+      return track.id === id;
+    });
+
+    if (saved) {
+      return clone(saved);
+    }
+
+    const entry = history.find(function (item) {
+      return getTrackId(item.track) === id;
+    });
+
+    if (entry) {
+      return clone(entry.track);
+    }
+
+    return null;
+  }
+
+  function normalizeTrackOrId(trackOrId) {
+    if (trackOrId && typeof trackOrId === "object") {
+      return getTrackId(trackOrId);
+    }
+
+    return normalizeId(trackOrId);
   }
 
   /* =========================================================
@@ -370,14 +659,13 @@
       return getSummary();
     }
 
-    const storedVersion = readStorage("version", 0);
+    const storedVersion = Number(
+      readStorage("version", 0)
+    ) || 0;
 
-    if (
-      storedVersion &&
-      Number(storedVersion) > LIBRARY_VERSION
-    ) {
+    if (storedVersion > LIBRARY_VERSION) {
       console.warn(
-        "[Resona Library] Stored library data comes from a newer version."
+        "[Resona Library] Stored data comes from a newer library version."
       );
     }
 
@@ -389,49 +677,55 @@
       readStorage("saved", [])
     );
 
-    const storedHistory = readStorage("history", []);
+    history = normalizeHistory(
+      readStorage("history", [])
+    );
 
-    history = Array.isArray(storedHistory)
-      ? storedHistory
-          .filter(function (entry) {
-            return (
-              entry &&
-              typeof entry === "object" &&
-              getTrackId(entry.track || entry)
-            );
-          })
-          .map(function (entry) {
-            const track = normalizeTrack(entry.track || entry);
+    playlists = normalizePlaylists(
+      readStorage("playlists", [])
+    );
 
-            return {
-              track: track,
-              playedAt:
-                entry.playedAt ||
-                entry.played_at ||
-                entry.timestamp ||
-                new Date().toISOString()
-            };
-          })
-          .slice(0, MAX_HISTORY)
-      : [];
+    trackCache = new Map();
 
-    const storedPlaylists = readStorage("playlists", []);
+    const storedCache = readStorage("trackCache", []);
 
-    playlists = Array.isArray(storedPlaylists)
-      ? storedPlaylists.filter(function (playlist) {
-          return (
-            playlist &&
-            typeof playlist === "object" &&
-            typeof playlist.id === "string" &&
-            typeof playlist.name === "string"
-          );
-        })
-      : [];
+    if (Array.isArray(storedCache)) {
+      storedCache.forEach(function (track) {
+        rememberTrack(track);
+      });
+    }
+
+    /*
+     * Rebuild the cache from known tracks.
+     */
+    rememberTracks(likedTracks);
+    rememberTracks(savedTracks);
+
+    history.forEach(function (entry) {
+      rememberTrack(entry.track);
+    });
+
+    /*
+     * Migrate legacy playlists where possible.
+     */
+    playlists.forEach(function (playlist) {
+      playlist.trackIds.forEach(function (trackId) {
+        if (!trackCache.has(trackId)) {
+          const track = getTrackFromCollections(trackId);
+
+          if (track) {
+            rememberTrack(track);
+          }
+        }
+      });
+    });
 
     initialized = true;
 
-    writeStorage("version", LIBRARY_VERSION);
-    syncState();
+    /*
+     * Save normalized data. Existing keys are preserved.
+     */
+    persistAll();
 
     emit("initialized", getSummary());
 
@@ -460,6 +754,8 @@
         message: "A valid track with an ID is required."
       };
     }
+
+    rememberTrack(normalized);
 
     const existingIndex = findTrackIndex(
       likedTracks,
@@ -511,11 +807,7 @@
   function unlikeTrack(trackOrId) {
     ensureInitialized();
 
-    const trackId =
-      typeof trackOrId === "object"
-        ? getTrackId(trackOrId)
-        : normalizeId(trackOrId);
-
+    const trackId = normalizeTrackOrId(trackOrId);
     const index = findTrackIndex(likedTracks, trackId);
 
     if (index === -1) {
@@ -527,6 +819,11 @@
     }
 
     const removed = likedTracks.splice(index, 1)[0];
+
+    /*
+     * Keep the track cached because playlists may still reference it.
+     */
+    rememberTrack(removed);
 
     persistAll();
 
@@ -556,22 +853,17 @@
       };
     }
 
-    if (isLiked(normalized.id)) {
-      return unlikeTrack(normalized.id);
-    }
-
-    return likeTrack(normalized);
+    return isLiked(normalized.id)
+      ? unlikeTrack(normalized.id)
+      : likeTrack(normalized);
   }
 
   function isLiked(trackOrId) {
     ensureInitialized();
 
-    const trackId =
-      typeof trackOrId === "object"
-        ? getTrackId(trackOrId)
-        : normalizeId(trackOrId);
+    const id = normalizeTrackOrId(trackOrId);
 
-    return findTrackIndex(likedTracks, trackId) !== -1;
+    return findTrackIndex(likedTracks, id) !== -1;
   }
 
   function getLiked(options) {
@@ -585,7 +877,11 @@
     }
 
     if (settings.limit != null) {
-      const limit = Math.max(0, Number(settings.limit) || 0);
+      const limit = Math.max(
+        0,
+        Number(settings.limit) || 0
+      );
+
       result = result.slice(0, limit);
     }
 
@@ -601,6 +897,11 @@
     ensureInitialized();
 
     const previousCount = likedTracks.length;
+
+    /*
+     * Cache tracks before clearing so playlists keep their metadata.
+     */
+    rememberTracks(likedTracks);
 
     likedTracks = [];
 
@@ -632,6 +933,8 @@
         message: "A valid track with an ID is required."
       };
     }
+
+    rememberTrack(normalized);
 
     const existingIndex = findTrackIndex(
       savedTracks,
@@ -683,11 +986,7 @@
   function unsaveTrack(trackOrId) {
     ensureInitialized();
 
-    const trackId =
-      typeof trackOrId === "object"
-        ? getTrackId(trackOrId)
-        : normalizeId(trackOrId);
-
+    const trackId = normalizeTrackOrId(trackOrId);
     const index = findTrackIndex(savedTracks, trackId);
 
     if (index === -1) {
@@ -699,6 +998,8 @@
     }
 
     const removed = savedTracks.splice(index, 1)[0];
+
+    rememberTrack(removed);
 
     persistAll();
 
@@ -728,22 +1029,17 @@
       };
     }
 
-    if (isSaved(normalized.id)) {
-      return unsaveTrack(normalized.id);
-    }
-
-    return saveTrack(normalized);
+    return isSaved(normalized.id)
+      ? unsaveTrack(normalized.id)
+      : saveTrack(normalized);
   }
 
   function isSaved(trackOrId) {
     ensureInitialized();
 
-    const trackId =
-      typeof trackOrId === "object"
-        ? getTrackId(trackOrId)
-        : normalizeId(trackOrId);
+    const id = normalizeTrackOrId(trackOrId);
 
-    return findTrackIndex(savedTracks, trackId) !== -1;
+    return findTrackIndex(savedTracks, id) !== -1;
   }
 
   function getSaved(options) {
@@ -757,7 +1053,11 @@
     }
 
     if (settings.limit != null) {
-      const limit = Math.max(0, Number(settings.limit) || 0);
+      const limit = Math.max(
+        0,
+        Number(settings.limit) || 0
+      );
+
       result = result.slice(0, limit);
     }
 
@@ -773,6 +1073,8 @@
     ensureInitialized();
 
     const previousCount = savedTracks.length;
+
+    rememberTracks(savedTracks);
 
     savedTracks = [];
 
@@ -805,33 +1107,39 @@
     }
 
     const settings = options || {};
-    const now = settings.playedAt || new Date().toISOString();
 
+    const playedAt = normalizeDate(
+      settings.playedAt || settings.played_at
+    );
+
+    rememberTrack(normalized);
+
+    /*
+     * Keep one most-recent entry per track.
+     */
     history = history.filter(function (entry) {
       return getTrackId(entry.track) !== normalized.id;
     });
 
     history.unshift({
       track: normalized,
-      playedAt: now
+      playedAt: playedAt
     });
 
-    if (history.length > MAX_HISTORY) {
-      history = history.slice(0, MAX_HISTORY);
-    }
+    history = history.slice(0, MAX_HISTORY);
 
     persistAll();
 
     emit("history:added", {
       track: clone(normalized),
-      playedAt: now,
+      playedAt: playedAt,
       total: history.length
     });
 
     return {
       success: true,
       track: clone(normalized),
-      playedAt: now
+      playedAt: playedAt
     };
   }
 
@@ -842,7 +1150,9 @@
     let result = clone(history);
 
     if (settings.query) {
-      const query = String(settings.query).trim().toLowerCase();
+      const query = String(settings.query)
+        .trim()
+        .toLowerCase();
 
       result = result.filter(function (entry) {
         return matchesTrack(entry.track, query);
@@ -856,7 +1166,11 @@
     }
 
     if (settings.limit != null) {
-      const limit = Math.max(0, Number(settings.limit) || 0);
+      const limit = Math.max(
+        0,
+        Number(settings.limit) || 0
+      );
+
       result = result.slice(0, limit);
     }
 
@@ -883,6 +1197,12 @@
 
     const previousCount = history.length;
 
+    rememberTracks(
+      history.map(function (entry) {
+        return entry.track;
+      })
+    );
+
     history = [];
 
     persistAll();
@@ -900,10 +1220,14 @@
   function removeFromHistory(trackOrId) {
     ensureInitialized();
 
-    const trackId =
-      typeof trackOrId === "object"
-        ? getTrackId(trackOrId)
-        : normalizeId(trackOrId);
+    const trackId = normalizeTrackOrId(trackOrId);
+
+    if (!trackId) {
+      return {
+        success: false,
+        removedCount: 0
+      };
+    }
 
     const previousCount = history.length;
 
@@ -937,7 +1261,7 @@
       return false;
     }
 
-    const searchable = [
+    const values = [
       track.title,
       track.name,
       track.artist,
@@ -950,14 +1274,22 @@
       track.mood,
       track.language,
       track.country
-    ]
+    ];
+
+    const searchable = values
       .filter(function (value) {
         return value !== undefined && value !== null;
       })
       .map(function (value) {
-        return Array.isArray(value)
-          ? value.join(" ")
-          : String(value);
+        if (Array.isArray(value)) {
+          return value.join(" ");
+        }
+
+        if (typeof value === "object") {
+          return "";
+        }
+
+        return String(value);
       })
       .join(" ")
       .toLowerCase();
@@ -995,20 +1327,22 @@
       };
     }
 
+    const normalizedSearch = normalizedQuery.toLowerCase();
+
     const liked = filterTracks(
       clone(likedTracks),
-      normalizedQuery.toLowerCase()
+      normalizedSearch
     );
 
     const saved = filterTracks(
       clone(savedTracks),
-      normalizedQuery.toLowerCase()
+      normalizedSearch
     );
 
     const historyResults = history.filter(function (entry) {
       return matchesTrack(
         entry.track,
-        normalizedQuery.toLowerCase()
+        normalizedSearch
       );
     });
 
@@ -1049,12 +1383,13 @@
       savedCount: savedTracks.length,
       historyCount: history.length,
       playlistCount: playlists.length,
+      cachedTrackCount: trackCache.size,
       initialized: initialized
     };
   }
 
   /* =========================================================
-     PLAYLISTS STORED IN THE LIBRARY
+     PLAYLISTS
      ========================================================= */
 
   function createPlaylist(name, options) {
@@ -1069,10 +1404,11 @@
       };
     }
 
-    if (playlistName.length > 80) {
+    if (playlistName.length > MAX_PLAYLIST_NAME) {
       return {
         success: false,
-        message: "Playlist names must be 80 characters or fewer."
+        message:
+          "Playlist names must be 80 characters or fewer."
       };
     }
 
@@ -1086,19 +1422,30 @@
     if (duplicate) {
       return {
         success: false,
-        message: "A playlist with that name already exists."
+        message:
+          "A playlist with that name already exists."
+      };
+    }
+
+    if (playlists.length >= MAX_PLAYLISTS) {
+      return {
+        success: false,
+        message: "Your playlist limit has been reached."
       };
     }
 
     const settings = options || {};
+    const now = new Date().toISOString();
 
     const playlist = {
       id: createId("playlist"),
       name: playlistName,
-      description: String(settings.description || "").trim(),
+      description: String(
+        settings.description || ""
+      ).trim().slice(0, MAX_DESCRIPTION),
       trackIds: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: now,
+      updatedAt: now
     };
 
     playlists.unshift(playlist);
@@ -1148,10 +1495,13 @@
       };
     }
 
-    const trackId =
-      typeof trackOrId === "object"
-        ? getTrackId(trackOrId)
-        : normalizeId(trackOrId);
+    const isTrackObject =
+      trackOrId &&
+      typeof trackOrId === "object";
+
+    const trackId = isTrackObject
+      ? getTrackId(trackOrId)
+      : normalizeId(trackOrId);
 
     if (!trackId) {
       return {
@@ -1160,10 +1510,26 @@
       };
     }
 
+    if (
+      isTrackObject &&
+      normalizeTrack(trackOrId)
+    ) {
+      rememberTrack(trackOrId);
+    }
+
     if (playlist.trackIds.includes(trackId)) {
       return {
         success: false,
         message: "Track is already in this playlist."
+      };
+    }
+
+    if (
+      playlist.trackIds.length >= MAX_PLAYLIST_TRACKS
+    ) {
+      return {
+        success: false,
+        message: "This playlist has reached its track limit."
       };
     }
 
@@ -1199,11 +1565,7 @@
       };
     }
 
-    const trackId =
-      typeof trackOrId === "object"
-        ? getTrackId(trackOrId)
-        : normalizeId(trackOrId);
-
+    const trackId = normalizeTrackOrId(trackOrId);
     const index = playlist.trackIds.indexOf(trackId);
 
     if (index === -1) {
@@ -1221,6 +1583,131 @@
     emit("playlist:track-removed", {
       playlistId: id,
       trackId: trackId
+    });
+
+    return {
+      success: true,
+      playlist: clone(playlist)
+    };
+  }
+
+  function renamePlaylist(playlistId, newName) {
+    ensureInitialized();
+
+    const id = normalizeId(playlistId);
+    const name = String(newName || "").trim();
+
+    const playlist = playlists.find(function (item) {
+      return item.id === id;
+    });
+
+    if (!playlist) {
+      return {
+        success: false,
+        message: "Playlist not found."
+      };
+    }
+
+    if (!name || name.length > MAX_PLAYLIST_NAME) {
+      return {
+        success: false,
+        message:
+          "Enter a playlist name of 1–80 characters."
+      };
+    }
+
+    const duplicate = playlists.some(function (item) {
+      return (
+        item.id !== id &&
+        item.name.toLowerCase() === name.toLowerCase()
+      );
+    });
+
+    if (duplicate) {
+      return {
+        success: false,
+        message:
+          "A playlist with that name already exists."
+      };
+    }
+
+    const previousName = playlist.name;
+
+    playlist.name = name;
+    playlist.updatedAt = new Date().toISOString();
+
+    persistAll();
+
+    emit("playlist:renamed", {
+      playlistId: id,
+      previousName: previousName,
+      name: name
+    });
+
+    return {
+      success: true,
+      playlist: clone(playlist)
+    };
+  }
+
+  function updatePlaylist(playlistId, updates) {
+    ensureInitialized();
+
+    const id = normalizeId(playlistId);
+    const values = updates || {};
+
+    const playlist = playlists.find(function (item) {
+      return item.id === id;
+    });
+
+    if (!playlist) {
+      return {
+        success: false,
+        message: "Playlist not found."
+      };
+    }
+
+    if (values.name !== undefined) {
+      const name = String(values.name || "").trim();
+
+      if (!name || name.length > MAX_PLAYLIST_NAME) {
+        return {
+          success: false,
+          message:
+            "Enter a playlist name of 1–80 characters."
+        };
+      }
+
+      const duplicate = playlists.some(function (item) {
+        return (
+          item.id !== id &&
+          item.name.toLowerCase() === name.toLowerCase()
+        );
+      });
+
+      if (duplicate) {
+        return {
+          success: false,
+          message:
+            "A playlist with that name already exists."
+        };
+      }
+
+      playlist.name = name;
+    }
+
+    if (values.description !== undefined) {
+      playlist.description = String(
+        values.description || ""
+      ).trim().slice(0, MAX_DESCRIPTION);
+    }
+
+    playlist.updatedAt = new Date().toISOString();
+
+    persistAll();
+
+    emit("playlist:updated", {
+      playlist: clone(playlist)
     });
 
     return {
@@ -1247,6 +1734,11 @@
 
     const removed = playlists.splice(index, 1)[0];
 
+    /*
+     * Do not delete cached tracks here. Another playlist may
+     * reference the same track.
+     */
+
     persistAll();
 
     emit("playlist:deleted", {
@@ -1272,28 +1764,13 @@
 
     const result = [];
 
-    for (const trackId of playlist.trackIds) {
-      const liked = likedTracks.find(function (track) {
-        return track.id === trackId;
-      });
-
-      const saved = savedTracks.find(function (track) {
-        return track.id === trackId;
-      });
-
-      const historyEntry = history.find(function (entry) {
-        return getTrackId(entry.track) === trackId;
-      });
-
-      const track =
-        liked ||
-        saved ||
-        (historyEntry && historyEntry.track);
+    playlist.trackIds.forEach(function (trackId) {
+      const track = getTrackFromCollections(trackId);
 
       if (track) {
-        result.push(clone(track));
+        result.push(track);
       }
-    }
+    });
 
     return result;
   }
@@ -1313,14 +1790,19 @@
       likedTracks: clone(likedTracks),
       savedTracks: clone(savedTracks),
       history: clone(history),
-      playlists: clone(playlists)
+      playlists: clone(playlists),
+      trackCache: Array.from(trackCache.values()).map(
+        function (track) {
+          return clone(track);
+        }
+      )
     };
   }
 
   function importLibrary(data, options) {
     ensureInitialized();
 
-    if (!data || typeof data !== "object") {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
       return {
         success: false,
         message: "Invalid library data."
@@ -1333,7 +1815,8 @@
     ) {
       return {
         success: false,
-        message: "This file is not a Resona music library."
+        message:
+          "This file is not a Resona music library."
       };
     }
 
@@ -1348,137 +1831,116 @@
       data.savedTracks || data.saved || []
     );
 
-    const importedHistory = Array.isArray(data.history)
-      ? data.history
-          .map(function (entry) {
-            const track = normalizeTrack(
-              entry && (entry.track || entry)
-            );
+    const importedHistory = normalizeHistory(
+      data.history || []
+    );
 
-            if (!track) {
-              return null;
-            }
+    const importedPlaylists = normalizePlaylists(
+      data.playlists || []
+    );
 
-            return {
-              track: track,
-              playedAt:
-                entry.playedAt ||
-                entry.played_at ||
-                entry.timestamp ||
-                new Date().toISOString()
-            };
-          })
-          .filter(Boolean)
-      : [];
+    const importedCache = normalizeTrackList(
+      data.trackCache || []
+    );
 
-    const importedPlaylists = Array.isArray(data.playlists)
-      ? data.playlists.filter(function (playlist) {
-          return (
-            playlist &&
-            typeof playlist.name === "string" &&
-            Array.isArray(playlist.trackIds)
-          );
-        })
-      : [];
+    /*
+     * Work with temporary collections first. If validation fails,
+     * existing library data is not partially replaced.
+     */
+    let nextLiked;
+    let nextSaved;
+    let nextHistory;
+    let nextPlaylists;
+    let nextCache;
 
     if (merge) {
-      const likedMap = new Map();
-
-      likedTracks.concat(importedLiked).forEach(function (track) {
-        likedMap.set(track.id, track);
-      });
-
-      const savedMap = new Map();
-
-      savedTracks.concat(importedSaved).forEach(function (track) {
-        savedMap.set(track.id, track);
-      });
-
-      likedTracks = Array.from(likedMap.values()).slice(
-        0,
+      nextLiked = mergeTracks(
+        likedTracks,
+        importedLiked,
         MAX_SAVED_TRACKS
       );
 
-      savedTracks = Array.from(savedMap.values()).slice(
-        0,
+      nextSaved = mergeTracks(
+        savedTracks,
+        importedSaved,
         MAX_SAVED_TRACKS
       );
 
-      const historyMap = new Map();
+      nextHistory = mergeHistory(
+        history,
+        importedHistory
+      );
 
-      history.concat(importedHistory).forEach(function (entry) {
-        const id = getTrackId(entry.track);
+      nextPlaylists = mergePlaylists(
+        playlists,
+        importedPlaylists
+      );
 
-        if (!id) {
-          return;
-        }
-
-        const current = historyMap.get(id);
-
-        if (
-          !current ||
-          String(entry.playedAt) > String(current.playedAt)
-        ) {
-          historyMap.set(id, entry);
-        }
-      });
-
-      history = Array.from(historyMap.values())
-        .sort(function (a, b) {
-          return (
-            new Date(b.playedAt).getTime() -
-            new Date(a.playedAt).getTime()
-          );
-        })
-        .slice(0, MAX_HISTORY);
-
-      const playlistMap = new Map();
-
-      playlists.concat(importedPlaylists).forEach(function (item) {
-        if (!item.id) {
-          item.id = createId("playlist");
-        }
-
-        playlistMap.set(item.id, {
-          id: String(item.id),
-          name: String(item.name),
-          description: String(item.description || ""),
-          trackIds: Array.from(
-            new Set(
-              item.trackIds.map(normalizeId).filter(Boolean)
-            )
-          ),
-          createdAt:
-            item.createdAt || new Date().toISOString(),
-          updatedAt:
-            item.updatedAt || new Date().toISOString()
-        });
-      });
-
-      playlists = Array.from(playlistMap.values());
+      nextCache = mergeTracks(
+        Array.from(trackCache.values()),
+        importedCache.concat(
+          importedLiked,
+          importedSaved,
+          importedHistory.map(function (entry) {
+            return entry.track;
+          })
+        ),
+        10000
+      );
     } else {
-      likedTracks = importedLiked.slice(0, MAX_SAVED_TRACKS);
-      savedTracks = importedSaved.slice(0, MAX_SAVED_TRACKS);
+      nextLiked = importedLiked.slice(
+        0,
+        MAX_SAVED_TRACKS
+      );
 
-      history = importedHistory.slice(0, MAX_HISTORY);
+      nextSaved = importedSaved.slice(
+        0,
+        MAX_SAVED_TRACKS
+      );
 
-      playlists = importedPlaylists.map(function (item) {
-        return {
-          id: String(item.id || createId("playlist")),
-          name: String(item.name),
-          description: String(item.description || ""),
-          trackIds: Array.from(
-            new Set(
-              item.trackIds.map(normalizeId).filter(Boolean)
-            )
-          ),
-          createdAt:
-            item.createdAt || new Date().toISOString(),
-          updatedAt:
-            item.updatedAt || new Date().toISOString()
-        };
-      });
+      nextHistory = importedHistory.slice(
+        0,
+        MAX_HISTORY
+      );
+
+      nextPlaylists = importedPlaylists.slice(
+        0,
+        MAX_PLAYLISTS
+      );
+
+      nextCache = mergeTracks(
+        importedCache.concat(
+          importedLiked,
+          importedSaved,
+          importedHistory.map(function (entry) {
+            return entry.track;
+          })
+        ),
+        [],
+        10000
+      );
     }
+
+    likedTracks = nextLiked;
+    savedTracks = nextSaved;
+    history = nextHistory;
+    playlists = nextPlaylists;
+
+    trackCache = new Map();
+
+    nextCache.forEach(function (track) {
+      rememberTrack(track);
+    });
+
+    /*
+     * Ensure every track referenced by a collection is cached.
+     */
+    rememberTracks(likedTracks);
+    rememberTracks(savedTracks);
+
+    history.forEach(function (entry) {
+      rememberTrack(entry.track);
+    });
 
     persistAll();
 
@@ -1489,6 +1951,87 @@
       summary: getSummary(),
       message: "Library imported successfully."
     };
+  }
+
+  function mergeTracks(existing, incoming, limit) {
+    const map = new Map();
+
+    existing.concat(incoming).forEach(function (item) {
+      const track = normalizeTrack(item);
+
+      if (track) {
+        /*
+         * Incoming data updates the existing track metadata.
+         */
+        map.set(track.id, track);
+      }
+    });
+
+    return Array.from(map.values()).slice(
+      0,
+      limit || MAX_SAVED_TRACKS
+    );
+  }
+
+  function mergeHistory(existing, incoming) {
+    const map = new Map();
+
+    existing.concat(incoming).forEach(function (entry) {
+      if (!entry || !entry.track) {
+        return;
+      }
+
+      const track = normalizeTrack(entry.track);
+
+      if (!track) {
+        return;
+      }
+
+      const playedAt = normalizeDate(entry.playedAt);
+      const previous = map.get(track.id);
+
+      if (
+        !previous ||
+        new Date(playedAt).getTime() >
+          new Date(previous.playedAt).getTime()
+      ) {
+        map.set(track.id, {
+          track: track,
+          playedAt: playedAt
+        });
+      }
+    });
+
+    return Array.from(map.values())
+      .sort(function (a, b) {
+        return (
+          new Date(b.playedAt).getTime() -
+          new Date(a.playedAt).getTime()
+        );
+      })
+      .slice(0, MAX_HISTORY);
+  }
+
+  function mergePlaylists(existing, incoming) {
+    const map = new Map();
+
+    existing.concat(incoming).forEach(function (item) {
+      const playlist = normalizePlaylist(item);
+
+      if (!playlist) {
+        return;
+      }
+
+      /*
+       * Copy all data into a new object. Never mutate the imported
+       * object supplied by the caller.
+       */
+      map.set(playlist.id, playlist);
+    });
+
+    return normalizePlaylists(
+      Array.from(map.values())
+    ).slice(0, MAX_PLAYLISTS);
   }
 
   /* =========================================================
@@ -1535,6 +2078,8 @@
      ========================================================= */
 
   window.ResonaLibrary = {
+    version: LIBRARY_VERSION,
+
     init: init,
 
     // Liked tracks
@@ -1572,8 +2117,10 @@
     getPlaylist: getPlaylist,
     addTrackToPlaylist: addTrackToPlaylist,
     removeTrackFromPlaylist: removeTrackFromPlaylist,
-    deletePlaylist: deletePlaylist,
     getPlaylistTracks: getPlaylistTracks,
+    renamePlaylist: renamePlaylist,
+    updatePlaylist: updatePlaylist,
+    deletePlaylist: deletePlaylist,
 
     // Backup and restore
     exportLibrary: exportLibrary,
@@ -1591,7 +2138,9 @@
     removeLikedTrack: unlikeTrack
   };
 
-  // Initialize the module when the script loads.
+  /*
+   * Initialize when the script loads.
+   */
   init();
 
 })(window, document);
