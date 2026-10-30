@@ -1,183 +1,101 @@
 /* =========================================================
-   RESONA — APPLICATION CONFIGURATION
+   RESONA — GLOBAL CONFIGURATION
+   File: config.js
    Version: 1.1.0
-   Global music discovery and streaming platform
    ========================================================= */
 
 "use strict";
 
-window.ResonaConfig = Object.freeze({
+(function (global) {
+  const ResonaConfig = {
+    app: {
+      name: "Resona",
+      version: "2.0.0",
+      environment: "production",
+      debug: false
+    },
 
-  /* APPLICATION */
+    api: {
+      baseUrl: "",
+      timeout: 15000,
+      retries: 1,
+      retryDelay: 1000
+    },
 
-  app: Object.freeze({
-    name: "Resona",
-    version: "1.1.0",
-    tagline: "Your world. Your sound.",
-    description:
-      "Discover music, explore artists, and find your next favourite sound from around the world.",
-    defaultLanguage: "en",
-    defaultRegion: "global"
-  }),
+    // Used by js/api.js
+    apiTimeout: 15000,
 
-  /* API CONFIGURATION */
+    storage: {
+      enabled: true,
+      prefix: "resona_",
 
-  api: Object.freeze({
+      keys: {
+        favorites: "resona_liked_tracks",
+        likedTracks: "resona_liked_tracks",
+        savedTracks: "resona_saved_tracks",
+        history: "resona_history",
+        playlists: "resona_library_playlists",
+        libraryPlaylists: "resona_library_playlists",
+        libraryVersion: "resona_library_version",
+        trackCache: "resona_trackCache",
+        searchHistory: "resona_search_history"
+      }
+    },
 
-    /*
-     * Leave empty until the actual backend is ready.
-     */
-    baseUrl: "",
+    player: {
+      autoplay: false,
+      defaultVolume: 0.8,
+      rememberVolume: true,
+      crossfade: false,
+      crossfadeDuration: 3000,
+      preload: "metadata",
+      updateInterval: 500
+    },
 
-    timeout: 15000,
+    discovery: {
+      defaultLimit: 20,
+      maximumLimit: 100,
+      featuredLimit: 8,
+      trendingLimit: 12,
+      recentlyPlayedLimit: 10
+    },
 
-    endpoints: Object.freeze({
-      health: "/health",
-      tracks: "/tracks",
-      albums: "/albums",
-      artists: "/artists",
-      search: "/search",
-      playlists: "/playlists",
-      recommendations: "/recommendations",
-      auth: "/auth",
-      subscriptions: "/subscriptions"
-    })
-  }),
+    search: {
+      minimumQueryLength: 1,
+      debounceDelay: 300,
+      defaultLimit: 20,
+      maximumLimit: 100,
+      historyLimit: 20
+    },
 
-  /*
-   * Compatibility with js/api.js.
-   * That module reads apiTimeout.
-   */
+    ui: {
+      toastDuration: 3000,
+      animationDuration: 250,
+      mobileBreakpoint: 768
+    },
 
-  apiTimeout: 15000,
+    limits: {
+      maximumPlaylistTracks: 5000,
+      maximumLibraryItems: 10000,
+      maximumSearchHistory: 20
+    },
 
-  /* MUSIC DISCOVERY */
+    features: {
+      search: true,
+      discovery: true,
+      playlists: true,
+      favorites: true,
+      listeningHistory: true,
+      artistPages: true,
+      albumPages: true,
+      downloads: false,
+      offlinePlayback: false,
+      musicVideos: false,
+      lyrics: false,
+      recommendations: true
+    }
+  };
 
-  discovery: Object.freeze({
+  global.ResonaConfig = Object.freeze(ResonaConfig);
 
-    defaultPageSize: 20,
-    maximumPageSize: 50,
-
-    regions: Object.freeze([
-      "global",
-      "africa",
-      "asia",
-      "europe",
-      "north-america",
-      "south-america",
-      "oceania"
-    ]),
-
-    categories: Object.freeze([
-      "trending",
-      "new-releases",
-      "popular",
-      "recommended",
-      "genres",
-      "moods"
-    ]),
-
-    enablePersonalizedRecommendations: true,
-    enableRegionalDiscovery: true,
-    enableGlobalCharts: true
-  }),
-
-  /* MUSIC PLAYER */
-
-  player: Object.freeze({
-
-    autoplay: false,
-    shuffle: false,
-    repeat: "off",
-    defaultVolume: 0.8,
-    rememberVolume: true,
-    updateProgressInterval: 1000
-  }),
-
-  /* LOCAL STORAGE */
-
-  storage: Object.freeze({
-
-    prefix: "resona_",
-
-    keys: Object.freeze({
-
-      preferences: "resona_preferences",
-
-      /*
-       * Library-compatible storage keys.
-       */
-
-      favorites: "resona_liked_tracks",
-      likedTracks: "resona_liked_tracks",
-
-      savedTracks: "resona_saved_tracks",
-
-      history: "resona_history",
-
-      playlists: "resona_library_playlists",
-      libraryPlaylists: "resona_library_playlists",
-
-      libraryVersion: "resona_library_version",
-
-      trackCache: "resona_trackCache",
-
-      volume: "resona_volume",
-      queue: "resona_queue",
-      session: "resona_session"
-    })
-  }),
-
-  /* FEATURE FLAGS */
-
-  features: Object.freeze({
-
-    search: true,
-    musicDiscovery: true,
-    favorites: true,
-    playlists: true,
-    listeningHistory: true,
-    artistProfiles: true,
-    globalCharts: true,
-
-    authentication: false,
-    subscriptions: false,
-    offlineMode: false,
-
-    requireAuthorizedPlayback: true
-  }),
-
-  /* INTERFACE */
-
-  ui: Object.freeze({
-
-    theme: "dark",
-    defaultPage: "home",
-    toastDuration: 3500,
-    animationDuration: 250,
-
-    breakpoints: Object.freeze({
-      mobile: 480,
-      tablet: 768,
-      desktop: 1024
-    })
-  }),
-
-  /* APPLICATION LIMITS */
-
-  limits: Object.freeze({
-
-    maximumSearchLength: 200,
-    maximumPlaylistNameLength: 100,
-    maximumRecentTracks: 50,
-    maximumLocalPlaylists: 100
-  })
-
-});
-
-/* CONFIGURATION READY */
-
-console.info(
-  "[Resona] Configuration loaded:",
-  window.ResonaConfig.app.version
-);
+})(window);
