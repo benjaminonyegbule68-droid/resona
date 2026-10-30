@@ -1,17 +1,17 @@
 /* =========================================================
    RESONA — SEARCH MODULE
    File: js/search.js
-   Version: 2.0.0
+   Version: 2.1.0
 
    Features:
    - Search tracks, artists, albums, and playlists
-   - Debounced live search with settled promises
-   - Search history with local persistence
+   - Debounced live search
+   - Persistent search history
    - Search filters
    - API search with local catalogue fallback
    - Cancellation of outdated requests
    - Duplicate-result protection
-   - Keyboard-friendly search events
+   - Nested API response normalization
    - Safe handling of missing browser APIs
    - No fabricated results
 
@@ -21,6 +21,8 @@
 "use strict";
 
 (function (global) {
+  if (!global) return;
+
   const ResonaSearch = (() => {
     const DEFAULT_LIMIT = 20;
     const MAX_LIMIT = 100;
@@ -31,6 +33,13 @@
     let pendingDebouncedSearch = null;
     let activeController = null;
     let requestNumber = 0;
+
+    const TYPES = [
+      "tracks",
+      "artists",
+      "albums",
+      "playlists"
+    ];
 
     const state = {
       query: "",
@@ -138,7 +147,10 @@
       return normalizeText(value).toLowerCase();
     }
 
-    function normalizeLimit(value, fallback = DEFAULT_LIMIT) {
+    function normalizeLimit(
+      value,
+      fallback = DEFAULT_LIMIT
+    ) {
       const number = Number(value);
 
       if (!Number.isFinite(number)) {
@@ -176,82 +188,8 @@
       );
     }
 
-    function normalizeCollection(value) {
-      if (Array.isArray(value)) {
-        return value;
-      }
-
-      if (!isObject(value)) {
-        return [];
-      }
-
-      const collectionKeys = [
-        "items",
-        "results",
-        "tracks",
-        "artists",
-        "albums",
-        "playlists"
-      ];
-
-      for (const key of collectionKeys) {
-        if (Array.isArray(value[key])) {
-          return value[key];
-        }
-      }
-
-      if (Array.isArray(value.data)) {
-        return value.data;
-      }
-
-      if (isObject(value.data)) {
-        return normalizeCollection(value.data);
-      }
-
-      return [];
-    }
-
-    function normalizeResults(data) {
-      if (Array.isArray(data)) {
-        return {
-          tracks: data,
-          artists: [],
-          albums: [],
-          playlists: []
-        };
-      }
-
-      if (!isObject(data)) {
-        return emptyResults();
-      }
-
-      let result = data;
-
-      if (isObject(data.data)) {
-        result = data.data;
-      }
-
-      const output = emptyResults();
-
-      for (const type of Object.keys(output)) {
-        if (Array.isArray(result[type])) {
-          output[type] = result[type];
-        } else if (type === "tracks") {
-          const fallback = normalizeCollection(result);
-
-          if (fallback.length) {
-            output.tracks = fallback;
-          }
-        }
-      }
-
-      return output;
-    }
-
     function getItemId(item) {
-      if (!isObject(item)) {
-        return "";
-      }
+      if (!isObject(item)) return "";
 
       return String(
         item.id ??
@@ -268,37 +206,119 @@
       ).trim();
     }
 
-    function getItemName(item) {
-      return normalizeText(
-        item?.title ||
-        item?.name ||
-        item?.artist_name ||
-        item?.album_title ||
-        ""
-      );
+    function normalizeCollection(value) {
+      if (Array.isArray(value)) {
+        return value;
+      }
+
+      if (!isObject(value)) {
+        return [];
+      }
+
+      for (const key of [
+        "items",
+        "results",
+        "tracks",
+        "artists",
+        "albums",
+        "playlists"
+      ]) {
+        if (Array.isArray(value[key])) {
+          return value[key];
+        }
+      }
+
+      if (Array.isArray(value.data)) {
+        return value.data;
+      }
+
+      if (isObject(value.data)) {
+        return normalizeCollection(value.data);
+      }
+
+      return [];
     }
 
-    function getItemArtist(item) {
-      if (Array.isArray(item?.artists)) {
-        return item.artists
-          .map(artist => {
-            return typeof artist === "string"
-              ? artist
-              : artist?.name || "";
-          })
-          .filter(Boolean)
-          .join(" ");
+    /*
+     * Safely unwraps common API response formats:
+     *
+     * { tracks: [...] }
+     * { data: { tracks: [...] } }
+     * { data: { results: { tracks: [...] } } }
+     * { results: { tracks: [...] } }
+     * { items: [...] }
+     * [...]
+     */
+
+    function unwrapResponse(data) {
+      let result = data;
+
+      for (let i = 0; i < 5; i++) {
+        if (!isObject(result)) break;
+
+        const hasCollections = TYPES.some(type =>
+          Array.isArray(result[type])
+        );
+
+        if (hasCollections) break;
+
+        if (isObject(result.results)) {
+          result = result.results;
+          continue;
+        }
+
+        if (isObject(result.data)) {
+          result = result.data;
+          continue;
+        }
+
+        if (isObject(result.payload)) {
+          result = result.payload;
+          continue;
+        }
+
+        break;
       }
 
-      if (isObject(item?.artist)) {
-        return normalizeText(item.artist.name);
+      return result;
+    }
+
+    function normalizeResults(data) {
+      if (Array.isArray(data)) {
+        return {
+          tracks: data,
+          artists: [],
+          albums: [],
+          playlists: []
+        };
       }
 
-      return normalizeText(
-        item?.artist ||
-        item?.artist_name ||
-        ""
-      );
+      const result = unwrapResponse(data);
+
+      if (!isObject(result)) {
+        return emptyResults();
+      }
+
+      const output = emptyResults();
+
+      for (const type of TYPES) {
+        if (Array.isArray(result[type])) {
+          output[type] = result[type];
+        }
+      }
+
+      /*
+       * Some APIs return a generic collection rather
+       * than naming the collection "tracks".
+       */
+      if (
+        !TYPES.some(type => output[type].length) &&
+        !Array.isArray(result.tracks)
+      ) {
+        output.tracks = normalizeCollection(result);
+      }
+
+      return output;
     }
 
     function normalizeValues(value) {
@@ -331,9 +351,7 @@
     }
 
     function getSearchableText(item) {
-      if (!isObject(item)) {
-        return "";
-      }
+      if (!isObject(item)) return "";
 
       const values = [
         item.title,
@@ -400,26 +418,15 @@
 
       return (Array.isArray(items) ? items : [])
         .filter(item => {
-          if (!isObject(item)) {
-            return false;
-          }
+          if (!isObject(item)) return false;
 
           const id = getItemId(item);
 
-          /*
-           * ID-less entities are retained because the
-           * backend may legitimately omit their IDs.
-           */
-          if (!id) {
-            return true;
-          }
+          if (!id) return true;
 
-          if (seen.has(id)) {
-            return false;
-          }
+          if (seen.has(id)) return false;
 
           seen.add(id);
-
           return true;
         });
     }
@@ -448,24 +455,18 @@
 
     function loadHistory() {
       try {
-        const storageKey = getStorageKey();
-
-        let saved;
+        const key = getStorageKey();
+        let saved = [];
 
         if (
           global.ResonaUtils &&
           typeof global.ResonaUtils.readStorage === "function"
         ) {
-          saved = global.ResonaUtils.readStorage(
-            storageKey,
-            []
+          saved = global.ResonaUtils.readStorage(key, []);
+        } else if (global.localStorage) {
+          saved = JSON.parse(
+            global.localStorage.getItem(key) || "[]"
           );
-        } else {
-          saved = global.localStorage
-            ? JSON.parse(
-                global.localStorage.getItem(storageKey) || "[]"
-              )
-            : [];
         }
 
         state.history = Array.isArray(saved)
@@ -489,47 +490,51 @@
 
     function saveHistory() {
       try {
-        const storageKey = getStorageKey();
+        const key = getStorageKey();
 
         if (
           global.ResonaUtils &&
           typeof global.ResonaUtils.writeStorage === "function"
         ) {
-          global.ResonaUtils.writeStorage(
-            storageKey,
-            state.history
-          );
+          const result =
+            global.ResonaUtils.writeStorage(
+              key,
+              state.history
+            );
 
-          return;
+          return result !== false;
         }
 
-        if (global.localStorage) {
-          global.localStorage.setItem(
-            storageKey,
-            JSON.stringify(state.history)
-          );
+        if (!global.localStorage) {
+          return false;
         }
+
+        global.localStorage.setItem(
+          key,
+          JSON.stringify(state.history)
+        );
+
+        return true;
       } catch (error) {
         console.warn(
           "[Resona Search] History could not be saved.",
           error
         );
+
+        return false;
       }
     }
 
     function addToHistory(query) {
       const value = normalizeText(query);
 
-      if (!value) {
-        return getHistory();
-      }
+      if (!value) return getHistory();
 
       state.history = [
         value,
-        ...state.history.filter(
-          item =>
-            normalizeForSearch(item) !==
-            normalizeForSearch(value)
+        ...state.history.filter(item =>
+          normalizeForSearch(item) !==
+          normalizeForSearch(value)
         )
       ].slice(0, MAX_SEARCH_HISTORY);
 
@@ -550,7 +555,8 @@
       const value = normalizeForSearch(query);
 
       state.history = state.history.filter(
-        item => normalizeForSearch(item) !== value
+        item =>
+          normalizeForSearch(item) !== value
       );
 
       saveHistory();
@@ -596,10 +602,7 @@
 
       const allowedTypes = [
         "all",
-        "tracks",
-        "artists",
-        "albums",
-        "playlists"
+        ...TYPES
       ];
 
       if (!allowedTypes.includes(next.type)) {
@@ -737,51 +740,58 @@
         }
       }
 
-      /*
-       * Also accept collections exposed by discovery.
-       */
       const discovery = global.ResonaDiscovery;
 
-      if (discovery) {
-        const getterNames = {
-          tracks: "getTracks",
-          artists: "getArtists",
-          albums: "getAlbums",
-          playlists: "getPlaylists"
-        };
+      if (!discovery) return [];
 
-        const getter = discovery[getterNames[key]];
+      const getterNames = {
+        tracks: "getTracks",
+        artists: "getArtists",
+        albums: "getAlbums",
+        playlists: "getPlaylists"
+      };
 
-        if (typeof getter === "function") {
-          try {
-            return getter.call(discovery, {
-              limit: MAX_LIMIT
-            });
-          } catch (error) {
-            console.warn(
-              "[Resona Search] Discovery fallback failed.",
-              error
-            );
-          }
-        }
+      const getter = discovery[getterNames[key]];
+
+      if (typeof getter !== "function") {
+        return [];
       }
 
-      return [];
+      try {
+        const result = getter.call(discovery, {
+          limit: MAX_LIMIT
+        });
+
+        /*
+         * Do not accidentally treat a Promise as an
+         * array. Discovery getters must return arrays.
+         */
+        return Array.isArray(result) ? result : [];
+      } catch (error) {
+        console.warn(
+          "[Resona Search] Discovery fallback failed.",
+          error
+        );
+
+        return [];
+      }
     }
 
     function searchLocal(query, limit) {
-      const normalizedQuery = normalizeForSearch(query);
+      const normalizedQuery =
+        normalizeForSearch(query);
 
       const result = emptyResults();
 
-      for (const type of Object.keys(result)) {
+      for (const type of TYPES) {
         result[type] = deduplicate(
           getLocalCollection(type)
         )
-          .filter(item => {
-            return getSearchableText(item)
-              .includes(normalizedQuery);
-          })
+          .filter(item =>
+            getSearchableText(item).includes(
+              normalizedQuery
+            )
+          )
           .slice(0, limit);
       }
 
@@ -803,9 +813,12 @@
 
       const requestOptions = {
         limit: normalizeLimit(options.limit),
-        offset: normalizeOffset(options.offset),
-        signal: options.signal
+        offset: normalizeOffset(options.offset)
       };
+
+      if (options.signal) {
+        requestOptions.signal = options.signal;
+      }
 
       if (filters.type !== "all") {
         requestOptions.type = filters.type;
@@ -815,11 +828,6 @@
         requestOptions.genre = filters.genre;
       }
 
-      /*
-       * Keep country and region separate.
-       * The backend can ignore unsupported fields, but
-       * we must not send a country as a region.
-       */
       if (filters.country) {
         requestOptions.country = filters.country;
       }
@@ -841,24 +849,22 @@
        ===================================================== */
 
     function abortActiveRequest() {
-      if (activeController) {
-        try {
-          activeController.abort();
-        } catch {
-          // Ignore abort errors.
-        }
+      if (!activeController) return;
 
-        activeController = null;
+      try {
+        activeController.abort();
+      } catch {
+        // Ignore abort errors.
       }
+
+      activeController = null;
     }
 
     function settlePendingDebouncedSearch(
       action,
       value
     ) {
-      if (!pendingDebouncedSearch) {
-        return;
-      }
+      if (!pendingDebouncedSearch) return;
 
       const pending = pendingDebouncedSearch;
 
@@ -877,14 +883,22 @@
         debounceTimer = null;
       }
 
-      /*
-       * Resolve the superseded promise with the current
-       * results instead of leaving it pending forever.
-       */
       settlePendingDebouncedSearch(
         "resolve",
         getResults()
       );
+    }
+
+    function createController() {
+      if (typeof global.AbortController !== "function") {
+        return null;
+      }
+
+      try {
+        return new global.AbortController();
+      } catch {
+        return null;
+      }
     }
 
     /* =====================================================
@@ -894,10 +908,6 @@
     async function search(query, options = {}) {
       const normalizedQuery = normalizeText(query);
 
-      /*
-       * Every direct search supersedes any pending
-       * debounced search.
-       */
       cancelDebounceOnly();
 
       const currentRequest = ++requestNumber;
@@ -929,17 +939,29 @@
         return getResults();
       }
 
-      const controller = new AbortController();
+      const controller = createController();
 
       activeController = controller;
 
+      let externalAbortHandler = null;
+
       if (options.signal) {
         if (options.signal.aborted) {
-          controller.abort();
-        } else {
+          if (controller) controller.abort();
+
+          state.loading = false;
+
+          return getResults();
+        }
+
+        if (controller) {
+          externalAbortHandler = () => {
+            controller.abort();
+          };
+
           options.signal.addEventListener(
             "abort",
-            () => controller.abort(),
+            externalAbortHandler,
             { once: true }
           );
         }
@@ -961,13 +983,14 @@
             normalizedQuery,
             {
               ...options,
-              signal: controller.signal
+              signal: controller?.signal
             }
           );
         } catch (error) {
           if (
             error?.name === "AbortError" ||
-            controller.signal.aborted
+            controller?.signal?.aborted ||
+            currentRequest !== requestNumber
           ) {
             return getResults();
           }
@@ -980,20 +1003,17 @@
           );
         }
 
-        /*
-         * Do not let an outdated request alter current
-         * results or state.
-         */
         if (
           currentRequest !== requestNumber ||
-          controller.signal.aborted
+          controller?.signal?.aborted ||
+          options.signal?.aborted
         ) {
           return getResults();
         }
 
         /*
-         * A missing API or failed API uses only catalogue
-         * entries already available in the browser.
+         * A missing backend or failed backend with no
+         * usable results triggers local catalogue search.
          */
         if (
           results === null ||
@@ -1017,10 +1037,6 @@
 
         state.results = applyFilters(deduplicated);
 
-        /*
-         * Keep the failure visible when the backend failed
-         * and no local results could be found.
-         */
         if (
           backendError &&
           getTotalResults(state.results) === 0
@@ -1053,7 +1069,8 @@
       } catch (error) {
         if (
           error?.name === "AbortError" ||
-          controller.signal.aborted ||
+          controller?.signal?.aborted ||
+          options.signal?.aborted ||
           currentRequest !== requestNumber
         ) {
           return getResults();
@@ -1072,6 +1089,13 @@
 
         throw error;
       } finally {
+        if (externalAbortHandler && options.signal) {
+          options.signal.removeEventListener(
+            "abort",
+            externalAbortHandler
+          );
+        }
+
         if (currentRequest === requestNumber) {
           state.loading = false;
 
@@ -1088,19 +1112,12 @@
     }
 
     function getTotalResults(results) {
-      if (!results) {
-        return 0;
-      }
+      if (!results) return 0;
 
-      return [
-        results.tracks,
-        results.artists,
-        results.albums,
-        results.playlists
-      ].reduce((total, collection) => {
+      return TYPES.reduce((total, type) => {
         return total + (
-          Array.isArray(collection)
-            ? collection.length
+          Array.isArray(results[type])
+            ? results[type].length
             : 0
         );
       }, 0);
@@ -1119,11 +1136,17 @@
           reject
         };
 
+        const requestedDelay = Number(
+          options.delay ?? DEBOUNCE_DELAY
+        );
+
         const delay = Math.max(
           0,
           Math.min(
             5000,
-            Number(options.delay ?? DEBOUNCE_DELAY) || 0
+            Number.isFinite(requestedDelay)
+              ? requestedDelay
+              : DEBOUNCE_DELAY
           )
         );
 
@@ -1135,7 +1158,10 @@
           pendingDebouncedSearch = null;
 
           try {
-            const result = await search(query, options);
+            const result = await search(
+              query,
+              options
+            );
 
             pending?.resolve(result);
           } catch (error) {
@@ -1259,4 +1285,5 @@
   })();
 
   global.ResonaSearch = ResonaSearch;
+
 })(window);
