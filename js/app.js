@@ -1,7 +1,7 @@
 /* =========================================================
    RESONA — APPLICATION ENTRY POINT
    File: js/app.js
-   Version: 2.0.0
+   Version: 2.1.0
 
    Coordinates:
    - api.js
@@ -22,7 +22,7 @@
     return;
   }
 
-  const APP_VERSION = "2.0.0";
+  const APP_VERSION = "2.1.0";
 
   const state = {
     initialized: false,
@@ -34,7 +34,9 @@
     searchTimer: null,
     searchRequestId: 0,
     errors: [],
-    destroyHandlers: []
+    destroyHandlers: [],
+    playerUnsubscribers: [],
+    libraryUnsubscribers: []
   };
 
   const MODULES = [
@@ -110,9 +112,6 @@
     });
   }
 
-  /*
-   * Correctly searches inside the requested root element.
-   */
   function getElement(selector, root) {
     const scope = root || document;
 
@@ -123,7 +122,7 @@
     try {
       return scope.querySelector(selector);
     } catch (error) {
-      warn("Invalid element selector:", selector, error);
+      warn("Invalid selector:", selector, error);
       return null;
     }
   }
@@ -138,72 +137,21 @@
     try {
       return Array.from(scope.querySelectorAll(selector));
     } catch (error) {
-      warn("Invalid element selector:", selector, error);
+      warn("Invalid selector:", selector, error);
       return [];
     }
   }
 
-  function escapeHTML(value) {
-    const ui = getUI();
+  function findFirstElement(selectors, root) {
+    for (const selector of selectors) {
+      const element = getElement(selector, root);
 
-    if (ui && typeof ui.escapeHTML === "function") {
-      return ui.escapeHTML(value);
-    }
-
-    return String(value == null ? "" : value).replace(
-      /[&<>"']/g,
-      function (character) {
-        return {
-          "&": "&amp;",
-          "<": "&lt;",
-          ">": "&gt;",
-          '"': "&quot;",
-          "'": "&#39;"
-        }[character];
-      }
-    );
-  }
-
-  function announce(message, options) {
-    const ui = getUI();
-
-    if (ui && typeof ui.announce === "function") {
-      try {
-        ui.announce(message, options);
-      } catch (error) {
-        warn("Announcement failed.", error);
+      if (element) {
+        return element;
       }
     }
-  }
 
-  function notify(message, type) {
-    const ui = getUI();
-
-    if (!ui) {
-      log(message);
-      return;
-    }
-
-    const methods = {
-      success: "success",
-      error: "error",
-      warning: "warning",
-      info: "info"
-    };
-
-    const method = methods[type || "info"];
-
-    if (typeof ui[method] === "function") {
-      ui[method](message);
-      return;
-    }
-
-    if (typeof ui.toast === "function") {
-      ui.toast(message);
-      return;
-    }
-
-    log(message);
+    return null;
   }
 
   function recordError(error, context) {
@@ -251,9 +199,7 @@
     let active = true;
 
     const cleanup = function () {
-      if (!active) {
-        return;
-      }
+      if (!active) return;
 
       active = false;
 
@@ -271,25 +217,105 @@
 
   function emitAppEvent(name, detail) {
     try {
+      if (typeof window.CustomEvent !== "function") {
+        return;
+      }
+
       window.dispatchEvent(
-        new CustomEvent("resona:app:" + name, {
+        new window.CustomEvent("resona:app:" + name, {
           detail: detail === undefined ? null : detail
         })
       );
     } catch (error) {
-      warn("Could not dispatch application event:", name);
+      warn("Could not dispatch event:", name);
     }
   }
 
+  function notify(message, type) {
+    const ui = getUI();
+
+    if (!ui) {
+      log(message);
+      return;
+    }
+
+    const methods = {
+      success: "success",
+      error: "error",
+      warning: "warning",
+      info: "info"
+    };
+
+    const method = methods[type || "info"];
+
+    if (typeof ui[method] === "function") {
+      ui[method](message);
+      return;
+    }
+
+    if (typeof ui.toast === "function") {
+      ui.toast(message);
+      return;
+    }
+
+    log(message);
+  }
+
+  function announce(message) {
+    const ui = getUI();
+
+    if (ui && typeof ui.announce === "function") {
+      safeCall(function () {
+        ui.announce(message);
+      });
+    }
+  }
+
+  function normalizePage(page) {
+    const normalized = String(page || "")
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, "-");
+
+    return VALID_PAGES.has(normalized)
+      ? normalized
+      : "home";
+  }
+
+  function normalizeList(value) {
+    if (Array.isArray(value)) return value;
+
+    if (!value || typeof value !== "object") {
+      return [];
+    }
+
+    for (const key of [
+      "items",
+      "results",
+      "tracks",
+      "data"
+    ]) {
+      if (Array.isArray(value[key])) {
+        return value[key];
+      }
+    }
+
+    return [];
+  }
+
+  /* =========================================================
+     TRACK UTILITIES
+     ========================================================= */
+
   function getTrackId(track) {
+    if (!track || typeof track !== "object") {
+      return "";
+    }
+
     const ui = getUI();
 
     if (ui && typeof ui.getTrackId === "function") {
       return String(ui.getTrackId(track) || "").trim();
-    }
-
-    if (!track || typeof track !== "object") {
-      return "";
     }
 
     return String(
@@ -302,6 +328,10 @@
   }
 
   function getTrackTitle(track) {
+    if (!track || typeof track !== "object") {
+      return "Untitled track";
+    }
+
     const ui = getUI();
 
     if (ui && typeof ui.getTrackTitle === "function") {
@@ -309,28 +339,44 @@
     }
 
     return String(
-      track && (track.title || track.name) ||
+      track.title ||
+      track.name ||
       "Untitled track"
     );
   }
 
   function getArtistName(track) {
-    const ui = getUI();
-
-    if (ui && typeof ui.getArtistName === "function") {
-      return ui.getArtistName(track);
-    }
-
     if (!track || typeof track !== "object") {
       return "Unknown artist";
     }
 
-    const artist = track.artistName ||
+    const ui = getUI();
+
+    if (ui && typeof ui.getArtistName === "function") {
+      const result = ui.getArtistName(track);
+
+      if (result) return result;
+    }
+
+    const artists = track.artists;
+
+    if (Array.isArray(artists)) {
+      return artists.map(function (artist) {
+        return typeof artist === "string"
+          ? artist
+          : artist && artist.name
+            ? artist.name
+            : "";
+      }).filter(Boolean).join(", ") || "Unknown artist";
+    }
+
+    const artist =
+      track.artistName ||
       track.artist_name ||
       track.artist;
 
     if (typeof artist === "string") {
-      return artist;
+      return artist || "Unknown artist";
     }
 
     if (artist && typeof artist === "object") {
@@ -341,13 +387,17 @@
   }
 
   function getArtwork(track) {
+    if (!track || typeof track !== "object") {
+      return "";
+    }
+
     const ui = getUI();
 
     if (ui && typeof ui.getTrackArtwork === "function") {
-      return ui.getTrackArtwork(track);
+      return ui.getTrackArtwork(track) || "";
     }
 
-    return track && (
+    return (
       track.artwork ||
       track.cover ||
       track.cover_url ||
@@ -358,9 +408,7 @@
   }
 
   function getTrackDuration(track) {
-    if (!track) {
-      return "0:00";
-    }
+    if (!track) return "0:00";
 
     const duration = Number(
       track.duration_seconds ??
@@ -384,49 +432,6 @@
       ":" +
       String(seconds % 60).padStart(2, "0")
     );
-  }
-
-  function normalizeList(value) {
-    if (Array.isArray(value)) {
-      return value;
-    }
-
-    if (!value || typeof value !== "object") {
-      return [];
-    }
-
-    if (Array.isArray(value.items)) {
-      return value.items;
-    }
-
-    if (Array.isArray(value.results)) {
-      return value.results;
-    }
-
-    if (Array.isArray(value.tracks)) {
-      return value.tracks;
-    }
-
-    if (Array.isArray(value.data)) {
-      return value.data;
-    }
-
-    return [];
-  }
-
-  function getLibraryMethod(method, fallback) {
-    const library = getLibrary();
-
-    if (!library || typeof library[method] !== "function") {
-      return fallback;
-    }
-
-    try {
-      return library[method]();
-    } catch (error) {
-      recordError(error, "library:" + method);
-      return fallback;
-    }
   }
 
   /* =========================================================
@@ -460,61 +465,46 @@
   }
 
   /* =========================================================
-     NAVIGATION
+     PAGE DISCOVERY
      ========================================================= */
 
-  function normalizePage(page) {
-    const normalized = String(page || "")
-      .trim()
-      .toLowerCase()
-      .replace(/_/g, "-");
-
-    return VALID_PAGES.has(normalized)
-      ? normalized
-      : "home";
-  }
-
-  function getPageElement(page) {
-    const selectors = [
-      '[data-page="' + page + '"]',
-      "#" + page + "-page",
-      "#" + page
-    ];
-
-    for (const selector of selectors) {
-      const element = getElement(selector);
-
-      if (element) {
-        return element;
-      }
-    }
-
-    return null;
-  }
-
-  function getAllPageElements() {
-    const declared = getElements("[data-page]");
-
-    if (declared.length) {
-      return declared;
-    }
-
-    return getElements(
-      '[id$="-page"], main > section[id]'
+  function getPageElements() {
+    const candidates = getElements(
+      '[data-page], [id$="-page"]'
     );
+
+    const pages = [];
+
+    candidates.forEach(function (element) {
+      const name = element.dataset.page ||
+        element.id.replace(/-page$/, "");
+
+      const normalized = normalizePage(name);
+
+      if (
+        VALID_PAGES.has(normalized) &&
+        !pages.includes(element)
+      ) {
+        pages.push(element);
+      }
+    });
+
+    return pages;
   }
 
   function setPageVisibility(page) {
     const normalized = normalizePage(page);
-    const pages = getAllPageElements();
+    const pages = getPageElements();
 
     let matched = false;
 
     pages.forEach(function (element) {
-      const inferredName = element.dataset.page ||
-        element.id.replace(/-page$/, "");
+      const name = normalizePage(
+        element.dataset.page ||
+        element.id.replace(/-page$/, "")
+      );
 
-      const visible = normalizePage(inferredName) === normalized;
+      const visible = name === normalized;
 
       element.hidden = !visible;
 
@@ -526,15 +516,9 @@
       element.classList.toggle("is-active", visible);
       element.classList.toggle("active", visible);
 
-      if (visible) {
-        matched = true;
-      }
+      if (visible) matched = true;
     });
 
-    /*
-     * If the HTML uses a single page container rather than
-     * multiple page sections, don't hide unrelated content.
-     */
     return matched;
   }
 
@@ -546,11 +530,10 @@
         element.dataset.navigate ||
         element.dataset.pageLink ||
         element.dataset.page ||
-        (
-          element.getAttribute("href") || ""
-        ).replace(/^#/, "");
+        (element.getAttribute("href") || "").replace(/^#/, "");
 
-      const active = normalizePage(destination) === page;
+      const active =
+        normalizePage(destination) === page;
 
       element.classList.toggle("is-active", active);
       element.classList.toggle("active", active);
@@ -563,11 +546,18 @@
     });
   }
 
+  /* =========================================================
+     NAVIGATION
+     ========================================================= */
+
   function navigate(page, options) {
     const settings = options || {};
     const normalized = normalizePage(page);
 
-    if (normalized === state.currentPage && !settings.force) {
+    if (
+      normalized === state.currentPage &&
+      !settings.force
+    ) {
       return {
         success: true,
         page: normalized,
@@ -606,7 +596,9 @@
     });
 
     announce(
-      "Opened " + normalized.replace(/-/g, " ") + " page."
+      "Opened " +
+      normalized.replace(/-/g, " ") +
+      " page."
     );
 
     Promise.resolve(loadPage(normalized)).catch(function (error) {
@@ -614,7 +606,7 @@
     });
 
     if (!pageFound) {
-      warn("No matching page element was found for:", normalized);
+      warn("No matching page element was found:", normalized);
     }
 
     return {
@@ -635,29 +627,24 @@
       "[data-navigate], [data-page-link], a[href^='#']"
     );
 
-    if (!link) {
-      return;
-    }
+    if (!link) return;
 
     const destination =
       link.dataset.navigate ||
       link.dataset.pageLink ||
       (link.getAttribute("href") || "").replace(/^#/, "");
 
-    if (!destination) {
-      return;
-    }
+    if (!destination) return;
 
     const normalized = String(destination)
       .trim()
       .toLowerCase()
       .replace(/_/g, "-");
 
-    if (!VALID_PAGES.has(normalized)) {
-      return;
-    }
+    if (!VALID_PAGES.has(normalized)) return;
 
     event.preventDefault();
+
     navigate(normalized);
   }
 
@@ -673,13 +660,16 @@
   }
 
   /* =========================================================
-     DISCOVERY ACCESS
+     DISCOVERY
      ========================================================= */
 
   function callDiscovery(method, options) {
     const discovery = getDiscovery();
 
-    if (!discovery || typeof discovery[method] !== "function") {
+    if (
+      !discovery ||
+      typeof discovery[method] !== "function"
+    ) {
       return Promise.resolve([]);
     }
 
@@ -693,7 +683,7 @@
   }
 
   /* =========================================================
-     TRACK RENDERING
+     TRACK CARD RENDERING
      ========================================================= */
 
   function createFallbackTrackCard(track, options) {
@@ -702,15 +692,13 @@
     const card = document.createElement("article");
 
     card.className = "resona-track-card";
-
-    const trackId = getTrackId(track);
-
-    card.dataset.trackId = trackId;
+    card.dataset.trackId = getTrackId(track);
 
     const artworkButton = document.createElement("button");
 
     artworkButton.type = "button";
-    artworkButton.className = "resona-track-card__artwork-button";
+    artworkButton.className =
+      "resona-track-card__artwork-button";
 
     artworkButton.setAttribute(
       "aria-label",
@@ -725,9 +713,7 @@
 
     const artwork = getArtwork(track);
 
-    if (artwork) {
-      image.src = artwork;
-    }
+    if (artwork) image.src = artwork;
 
     image.onerror = function () {
       image.onerror = null;
@@ -772,7 +758,7 @@
       const liked = Boolean(
         library &&
         typeof library.isLiked === "function" &&
-        library.isLiked(trackId)
+        library.isLiked(getTrackId(track))
       );
 
       like.textContent = liked ? "♥" : "♡";
@@ -788,7 +774,10 @@
       );
 
       like.addEventListener("click", function () {
-        if (!library || typeof library.toggleLike !== "function") {
+        if (
+          !library ||
+          typeof library.toggleLike !== "function"
+        ) {
           notify("Your library is unavailable.", "error");
           return;
         }
@@ -797,7 +786,7 @@
           const result = library.toggleLike(track);
 
           if (!result || result.success === false) {
-            notify("Unable to update your liked tracks.", "error");
+            notify("Unable to update liked tracks.", "error");
             return;
           }
 
@@ -816,7 +805,7 @@
           );
         } catch (error) {
           recordError(error, "like-track");
-          notify("Unable to update your liked tracks.", "error");
+          notify("Unable to update liked tracks.", "error");
         }
       });
 
@@ -847,9 +836,7 @@
       ? getElement(container)
       : container;
 
-    if (!element) {
-      return false;
-    }
+    if (!element) return false;
 
     const list = normalizeList(tracks);
     const settings = options || {};
@@ -883,13 +870,11 @@
     const fragment = document.createDocumentFragment();
 
     list.forEach(function (track) {
-      if (!track || typeof track !== "object") {
-        return;
-      }
+      if (!track || typeof track !== "object") return;
 
       const card = createTrackCard(track, settings);
 
-      if (card) {
+      if (card && card.nodeType) {
         fragment.appendChild(card);
       }
     });
@@ -899,20 +884,8 @@
     return true;
   }
 
-  function findFirstElement(selectors) {
-    for (const selector of selectors) {
-      const element = getElement(selector);
-
-      if (element) {
-        return element;
-      }
-    }
-
-    return null;
-  }
-
   /* =========================================================
-     HOME PAGE
+     HOME
      ========================================================= */
 
   async function loadHome() {
@@ -942,15 +915,14 @@
     const jobs = sections.map(async function (section) {
       const container = findFirstElement(section.selectors);
 
-      if (!container) {
-        return;
-      }
+      if (!container) return;
 
       const ui = getUI();
 
       if (ui && typeof ui.showLoading === "function") {
         ui.showLoading(container, {
-          message: "Loading " + section.title.toLowerCase() + "..."
+          message: "Loading " +
+            section.title.toLowerCase() + "..."
         });
       }
 
@@ -959,17 +931,17 @@
 
         renderTracks(container, tracks, {
           showLike: true,
-          emptyTitle: "No " + section.title.toLowerCase() + " yet"
+          emptyTitle: "No " +
+            section.title.toLowerCase() + " yet"
         });
       } catch (error) {
         recordError(error, "home:" + section.name);
 
         if (ui && typeof ui.showErrorState === "function") {
           ui.showErrorState(container, {
-            message: "We couldn't load this section. Please try again.",
-            onAction: function () {
-              loadHome();
-            }
+            message:
+              "We couldn't load this section. Please try again.",
+            onAction: loadHome
           });
         }
       }
@@ -992,7 +964,8 @@
         renderTracks(recentContainer, recent, {
           showLike: true,
           emptyTitle: "Nothing played yet",
-          emptyMessage: "Tracks you play will appear here."
+          emptyMessage:
+            "Tracks you play will appear here."
         });
       } catch (error) {
         recordError(error, "home:recently-played");
@@ -1003,7 +976,7 @@
   }
 
   /* =========================================================
-     EXPLORE PAGE
+     EXPLORE
      ========================================================= */
 
   async function loadExplore() {
@@ -1013,9 +986,7 @@
       "[data-section='explore-tracks']"
     ]);
 
-    if (!container) {
-      return;
-    }
+    if (!container) return;
 
     const ui = getUI();
 
@@ -1033,7 +1004,7 @@
         showSave: true,
         emptyTitle: "Your discovery starts here",
         emptyMessage:
-          "When catalogue music is available, it will appear here."
+          "Catalogue music will appear here when available."
       });
     } catch (error) {
       recordError(error, "explore");
@@ -1045,6 +1016,40 @@
         });
       }
     }
+
+    /*
+     * Also populate the Explore artists and albums sections.
+     */
+    const artistsContainer = getElement("#explore-artists");
+    const albumsContainer = getElement("#explore-albums");
+
+    if (artistsContainer) {
+      callDiscovery("getArtists")
+        .then(items =>
+          renderSimpleEntityCards(
+            artistsContainer,
+            items,
+            "artist"
+          )
+        )
+        .catch(error =>
+          recordError(error, "explore-artists")
+        );
+    }
+
+    if (albumsContainer) {
+      callDiscovery("getAlbums")
+        .then(items =>
+          renderSimpleEntityCards(
+            albumsContainer,
+            items,
+            "album"
+          )
+        )
+        .catch(error =>
+          recordError(error, "explore-albums")
+        );
+    }
   }
 
   /* =========================================================
@@ -1052,6 +1057,15 @@
      ========================================================= */
 
   function getSearchInput() {
+    if (state.currentPage === "explore") {
+      return findFirstElement([
+        "#explore-search-input",
+        "[data-explore-search-input]",
+        "#search-input",
+        "[data-resona-search-input]"
+      ]);
+    }
+
     return findFirstElement([
       "#search-input",
       "#music-search",
@@ -1061,6 +1075,14 @@
   }
 
   function getSearchResultsContainer() {
+    if (state.currentPage === "explore") {
+      return findFirstElement([
+        "#explore-search-results",
+        "#explore-tracks",
+        "#search-results"
+      ]);
+    }
+
     return findFirstElement([
       "#search-results",
       "#music-search-results",
@@ -1068,32 +1090,114 @@
     ]);
   }
 
-  function normalizeSearchTracks(result) {
-    if (Array.isArray(result)) {
-      return result;
+  function unwrapSearchResponse(result) {
+    let value = result;
+
+    for (let i = 0; i < 5; i++) {
+      if (!value || typeof value !== "object") break;
+
+      if (
+        Array.isArray(value.tracks) ||
+        Array.isArray(value.artists) ||
+        Array.isArray(value.albums) ||
+        Array.isArray(value.playlists)
+      ) {
+        return value;
+      }
+
+      if (Array.isArray(value.items)) {
+        return { tracks: value.items };
+      }
+
+      if (Array.isArray(value.results)) {
+        return { tracks: value.results };
+      }
+
+      if (value.data && typeof value.data === "object") {
+        value = value.data;
+        continue;
+      }
+
+      if (
+        value.results &&
+        typeof value.results === "object"
+      ) {
+        value = value.results;
+        continue;
+      }
+
+      break;
     }
 
-    if (!result || typeof result !== "object") {
+    return value;
+  }
+
+  function normalizeSearchTracks(result) {
+    if (Array.isArray(result)) return result;
+
+    const value = unwrapSearchResponse(result);
+
+    if (!value || typeof value !== "object") {
       return [];
     }
 
-    if (Array.isArray(result.tracks)) {
-      return result.tracks;
+    return normalizeList(value.tracks || value);
+  }
+
+  function renderSearchCategories(result) {
+    const normalized = unwrapSearchResponse(result) || {};
+
+    const tracks = normalizeSearchTracks(normalized);
+    const artists = normalizeList(normalized.artists);
+    const albums = normalizeList(normalized.albums);
+    const playlists = normalizeList(normalized.playlists);
+
+    const mainContainer = getSearchResultsContainer();
+
+    if (mainContainer) {
+      renderTracks(mainContainer, tracks, {
+        showLike: true,
+        showSave: true,
+        emptyTitle: "No tracks found",
+        emptyMessage:
+          "Try another song, artist, album, or genre."
+      });
     }
 
-    if (Array.isArray(result.items)) {
-      return result.items;
+    const artistsContainer = getElement("#search-artists");
+    const albumsContainer = getElement("#search-albums");
+    const playlistsContainer = getElement("#search-playlists");
+
+    if (artistsContainer) {
+      renderSimpleEntityCards(
+        artistsContainer,
+        artists,
+        "artist"
+      );
     }
 
-    if (Array.isArray(result.results)) {
-      return result.results;
+    if (albumsContainer) {
+      renderSimpleEntityCards(
+        albumsContainer,
+        albums,
+        "album"
+      );
     }
 
-    if (result.data && typeof result.data === "object") {
-      return normalizeSearchTracks(result.data);
+    if (playlistsContainer) {
+      renderSimpleEntityCards(
+        playlistsContainer,
+        playlists,
+        "playlist"
+      );
     }
 
-    return [];
+    return {
+      tracks: tracks,
+      artists: artists,
+      albums: albums,
+      playlists: playlists
+    };
   }
 
   async function performSearch(query, options) {
@@ -1125,7 +1229,7 @@
 
     if (ui && typeof ui.showLoading === "function") {
       ui.showLoading(container, {
-        message: "Searching music..."
+        message: "Searching Resona..."
       });
     }
 
@@ -1134,10 +1238,6 @@
       let result;
 
       if (search && typeof search.search === "function") {
-        /*
-         * The options object allows the search module to apply
-         * supported filters without changing this coordinator.
-         */
         result = await search.search(
           normalizedQuery,
           settings
@@ -1162,26 +1262,26 @@
         };
       }
 
-      const tracks = normalizeSearchTracks(result);
+      const categories = renderSearchCategories(result);
 
-      renderTracks(container, tracks, {
-        showLike: true,
-        showSave: true,
-        emptyTitle: "No tracks found",
-        emptyMessage:
-          "Try another song, artist, album, or genre."
-      });
+      const total =
+        categories.tracks.length +
+        categories.artists.length +
+        categories.albums.length +
+        categories.playlists.length;
 
       announce(
-        tracks.length +
-        (tracks.length === 1
-          ? " track found."
-          : " tracks found.")
+        total +
+        (total === 1
+          ? " search result found."
+          : " search results found.")
       );
 
       return {
         success: true,
-        results: tracks,
+        results: categories.tracks,
+        categories: categories,
+        total: total,
         raw: result
       };
     } catch (error) {
@@ -1210,12 +1310,10 @@
     }
   }
 
-  function handleSearchInput() {
-    const input = getSearchInput();
+  function handleSearchInput(event) {
+    const input = event.currentTarget;
 
-    if (!input) {
-      return;
-    }
+    if (!input) return;
 
     clearTimeout(state.searchTimer);
 
@@ -1241,9 +1339,7 @@
   function loadLibrary() {
     const library = getLibrary();
 
-    if (!library) {
-      return;
-    }
+    if (!library) return;
 
     const liked = typeof library.getLiked === "function"
       ? library.getLiked()
@@ -1254,11 +1350,15 @@
       : [];
 
     const history = typeof library.getHistory === "function"
-      ? library.getHistory({ tracksOnly: true })
+      ? library.getHistory()
       : [];
 
     renderLibrarySection(
-      ["#liked-tracks", "#library-liked", "[data-library='liked']"],
+      [
+        "#liked-tracks",
+        "#library-liked",
+        "[data-library='liked']"
+      ],
       liked,
       {
         showLike: true,
@@ -1268,7 +1368,11 @@
     );
 
     renderLibrarySection(
-      ["#saved-tracks", "#library-saved", "[data-library='saved']"],
+      [
+        "#saved-tracks",
+        "#library-saved",
+        "[data-library='saved']"
+      ],
       saved,
       {
         showLike: true,
@@ -1293,17 +1397,20 @@
     );
 
     emitAppEvent("library:rendered", {
-      summary: typeof library.getSummary === "function"
-        ? library.getSummary()
-        : null
+      summary:
+        typeof library.getSummary === "function"
+          ? library.getSummary()
+          : null
     });
   }
 
   /* =========================================================
-     ARTISTS AND ALBUMS
+     ARTISTS, ALBUMS AND PLAYLISTS
      ========================================================= */
 
   function renderSimpleEntityCards(container, items, type) {
+    if (!container) return;
+
     container.replaceChildren();
 
     const list = normalizeList(items);
@@ -1318,6 +1425,12 @@
           message:
             "This section will populate when catalogue data is available."
         });
+      } else {
+        const message = document.createElement("p");
+
+        message.textContent = "Nothing to show yet.";
+
+        container.appendChild(message);
       }
 
       return;
@@ -1326,9 +1439,7 @@
     const fragment = document.createDocumentFragment();
 
     list.forEach(function (item) {
-      if (!item || typeof item !== "object") {
-        return;
-      }
+      if (!item || typeof item !== "object") return;
 
       const card = document.createElement("article");
 
@@ -1337,7 +1448,9 @@
       const image = document.createElement("img");
 
       image.loading = "lazy";
-      image.alt = String(item.name || item.title || type);
+      image.alt = String(
+        item.name || item.title || type
+      );
 
       const artwork =
         item.image ||
@@ -1389,31 +1502,18 @@
       "[data-section='artists']"
     ]);
 
-    if (!container) {
-      return;
-    }
-
-    const ui = getUI();
-
-    if (ui && typeof ui.showLoading === "function") {
-      ui.showLoading(container, {
-        message: "Loading artists..."
-      });
-    }
+    if (!container) return;
 
     try {
       const artists = await callDiscovery("getArtists");
 
-      renderSimpleEntityCards(container, artists, "artist");
+      renderSimpleEntityCards(
+        container,
+        artists,
+        "artist"
+      );
     } catch (error) {
       recordError(error, "artists");
-
-      if (ui && typeof ui.showErrorState === "function") {
-        ui.showErrorState(container, {
-          message: "We couldn't load artists.",
-          onAction: loadArtists
-        });
-      }
     }
   }
 
@@ -1424,42 +1524,381 @@
       "[data-section='albums']"
     ]);
 
-    if (!container) {
-      return;
-    }
-
-    const ui = getUI();
-
-    if (ui && typeof ui.showLoading === "function") {
-      ui.showLoading(container, {
-        message: "Loading albums..."
-      });
-    }
+    if (!container) return;
 
     try {
       const albums = await callDiscovery("getAlbums");
 
-      renderSimpleEntityCards(container, albums, "album");
+      renderSimpleEntityCards(
+        container,
+        albums,
+        "album"
+      );
     } catch (error) {
       recordError(error, "albums");
+    }
+  }
 
-      if (ui && typeof ui.showErrorState === "function") {
-        ui.showErrorState(container, {
-          message: "We couldn't load albums.",
-          onAction: loadAlbums
+  function loadPlaylists() {
+    const library = getLibrary();
+
+    if (
+      !library ||
+      typeof library.getPlaylists !== "function"
+    ) {
+      return;
+    }
+
+    const container = findFirstElement([
+      "#playlists-list",
+      "#playlists-grid",
+      "#library-playlists",
+      "[data-section='playlists']"
+    ]);
+
+    if (!container) return;
+
+    let playlists = [];
+
+    try {
+      playlists = library.getPlaylists();
+    } catch (error) {
+      recordError(error, "load-playlists");
+    }
+
+    container.replaceChildren();
+
+    if (!Array.isArray(playlists) || !playlists.length) {
+      const ui = getUI();
+
+      if (ui && typeof ui.showEmpty === "function") {
+        ui.showEmpty(container, {
+          icon: "♫",
+          title: "No playlists yet",
+          message:
+            "Your playlists will appear here when you create them."
         });
       }
+
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    playlists.forEach(function (playlist) {
+      if (!playlist || typeof playlist !== "object") return;
+
+      const card = document.createElement("article");
+
+      card.className = "resona-playlist-card";
+
+      const title = document.createElement("h3");
+
+      title.textContent = String(
+        playlist.name || "Untitled playlist"
+      );
+
+      const ids = Array.isArray(playlist.trackIds)
+        ? playlist.trackIds
+        : Array.isArray(playlist.track_ids)
+          ? playlist.track_ids
+          : [];
+
+      const description = document.createElement("p");
+
+      description.textContent =
+        playlist.description || ids.length + " tracks";
+
+      const openButton = document.createElement("button");
+
+      openButton.type = "button";
+      openButton.textContent = "View playlist";
+
+      openButton.addEventListener("click", function () {
+        openPlaylist(playlist.id);
+      });
+
+      card.appendChild(title);
+      card.appendChild(description);
+      card.appendChild(openButton);
+
+      fragment.appendChild(card);
+    });
+
+    container.appendChild(fragment);
+  }
+
+  function openPlaylist(playlistId) {
+    const library = getLibrary();
+
+    if (
+      !library ||
+      typeof library.getPlaylistTracks !== "function"
+    ) {
+      notify("Playlist access is unavailable.", "error");
+      return [];
+    }
+
+    try {
+      const tracks = library.getPlaylistTracks(playlistId);
+
+      if (!Array.isArray(tracks) || !tracks.length) {
+        notify("This playlist has no available tracks.", "info");
+        return [];
+      }
+
+      const container = findFirstElement([
+        "#playlist-tracks",
+        "#playlist-detail-tracks",
+        "#library-playlist-tracks"
+      ]);
+
+      if (container) {
+        renderTracks(container, tracks, {
+          showLike: true,
+          emptyTitle: "Playlist is empty"
+        });
+      }
+
+      emitAppEvent("playlist:opened", {
+        playlistId: playlistId,
+        tracks: tracks
+      });
+
+      return tracks;
+    } catch (error) {
+      recordError(error, "open-playlist");
+      return [];
     }
   }
 
   /* =========================================================
-     PLAYBACK
+     PLAYER AND NOW PLAYING
      ========================================================= */
+
+  function updateImage(element, artwork) {
+    if (!element || element.tagName !== "IMG") return;
+
+    const ui = getUI();
+
+    if (ui && typeof ui.setSafeImage === "function") {
+      ui.setSafeImage(element, artwork);
+    } else if (artwork) {
+      element.src = artwork;
+    } else {
+      element.removeAttribute("src");
+    }
+  }
+
+  function updateNowPlaying(track) {
+    if (!track) return;
+
+    const title = getTrackTitle(track);
+    const artist = getArtistName(track);
+    const artwork = getArtwork(track);
+
+    getElements([
+      "[data-now-playing-title]",
+      "#now-playing-title",
+      "#player-track-title",
+      "#mini-player-title"
+    ].join(",")).forEach(function (element) {
+      element.textContent = title;
+    });
+
+    getElements([
+      "[data-now-playing-artist]",
+      "#now-playing-artist",
+      "#player-track-artist",
+      "#mini-player-artist"
+    ].join(",")).forEach(function (element) {
+      element.textContent = artist;
+    });
+
+    getElements([
+      "[data-now-playing-artwork]",
+      "#now-playing-artwork",
+      "#player-track-artwork",
+      "#now-playing-cover"
+    ].join(",")).forEach(function (element) {
+      updateImage(element, artwork);
+    });
+  }
+
+  function formatTime(seconds) {
+    const value = Number(seconds);
+
+    if (!Number.isFinite(value) || value < 0) {
+      return "0:00";
+    }
+
+    const total = Math.floor(value);
+
+    return (
+      Math.floor(total / 60) +
+      ":" +
+      String(total % 60).padStart(2, "0")
+    );
+  }
+
+  function updatePlaybackProgress(detail) {
+    const current = Number(
+      detail?.currentTime ??
+      detail?.position ??
+      0
+    );
+
+    const duration = Number(
+      detail?.duration ??
+      detail?.track?.duration ??
+      0
+    );
+
+    const percentage = duration > 0
+      ? Math.min(100, Math.max(0, current / duration * 100))
+      : 0;
+
+    const fill = getElement("#player-progress-fill");
+
+    if (fill) {
+      fill.style.width = percentage + "%";
+    }
+
+    const currentLabel = getElement("#player-current-time");
+
+    if (currentLabel) {
+      currentLabel.textContent = formatTime(current);
+    }
+
+    const durationLabel = getElement("#player-duration");
+
+    if (durationLabel) {
+      durationLabel.textContent = formatTime(duration);
+    }
+
+    const track = getElement("#player-progress-track");
+
+    if (track) {
+      track.setAttribute(
+        "aria-valuenow",
+        String(Math.round(percentage))
+      );
+
+      track.setAttribute(
+        "aria-valuetext",
+        formatTime(current) + " of " + formatTime(duration)
+      );
+    }
+  }
+
+  function updatePlaybackButtons(isPlaying) {
+    const playing = Boolean(isPlaying);
+
+    [
+      "#player-toggle",
+      "#mini-player-toggle",
+      "[data-resona-action='pause']",
+      "[data-resona-action='resume']"
+    ].forEach(function (selector) {
+      getElements(selector).forEach(function (button) {
+        if (
+          button.id === "player-toggle" ||
+          button.id === "mini-player-toggle"
+        ) {
+          button.textContent = playing ? "Ⅱ" : "▶";
+
+          button.setAttribute(
+            "aria-label",
+            playing ? "Pause playback" : "Resume playback"
+          );
+        }
+
+        if (button.dataset.resonaAction === "pause") {
+          button.hidden = !playing;
+        }
+
+        if (button.dataset.resonaAction === "resume") {
+          button.hidden = playing;
+        }
+      });
+    });
+  }
+
+  function handlePlayerEvent(eventName, detail) {
+    emitAppEvent("player:" + eventName, detail);
+
+    const track = detail && (
+      detail.track ||
+      detail.currentTrack ||
+      detail
+    );
+
+    if (
+      eventName === "trackchange" ||
+      eventName === "play"
+    ) {
+      if (track && typeof track === "object") {
+        updateNowPlaying(track);
+      }
+    }
+
+    if (eventName === "play") {
+      updatePlaybackButtons(true);
+    }
+
+    if (eventName === "pause" || eventName === "ended") {
+      updatePlaybackButtons(false);
+    }
+
+    if (eventName === "timeupdate") {
+      updatePlaybackProgress(detail || {});
+    }
+
+    if (eventName === "error") {
+      notify(
+        detail?.message || "Playback encountered an error.",
+        "warning"
+      );
+    }
+  }
+
+  function bindPlayerEvents() {
+    const player = getPlayer();
+
+    if (!player || typeof player.on !== "function") {
+      warn("Player event subscription is unavailable.");
+      return;
+    }
+
+    [
+      "trackchange",
+      "play",
+      "pause",
+      "ended",
+      "timeupdate",
+      "volumechange",
+      "error"
+    ].forEach(function (eventName) {
+      const unsubscribe = player.on(
+        eventName,
+        function (detail) {
+          handlePlayerEvent(eventName, detail);
+        }
+      );
+
+      if (typeof unsubscribe === "function") {
+        state.playerUnsubscribers.push(unsubscribe);
+      }
+    });
+  }
 
   async function playTrack(track, options) {
     const player = getPlayer();
 
-    if (!player || typeof player.playTrack !== "function") {
+    if (
+      !player ||
+      typeof player.playTrack !== "function"
+    ) {
       notify("The music player is unavailable.", "error");
 
       return {
@@ -1486,19 +1925,22 @@
       );
 
       /*
-       * Recognize explicit failure in either common result format.
+       * Do not record history until the player confirms
+       * successful playback.
        */
       if (
         result === false ||
         (
           result &&
           typeof result === "object" &&
-          result.success === false
+          (
+            result.success === false ||
+            result.playing === false
+          )
         )
       ) {
-        const message = result && result.message
-          ? result.message
-          : "Unable to play this track.";
+        const message = result?.message ||
+          "Unable to play this track.";
 
         notify(message, "warning");
 
@@ -1509,18 +1951,47 @@
         };
       }
 
+      /*
+       * Some player implementations return undefined
+       * after starting playback. In that case, verify
+       * the current player state when possible.
+       */
+      if (result === undefined && typeof player.getState === "function") {
+        const playerState = player.getState();
+
+        const currentId = getTrackId(
+          playerState?.currentTrack
+        );
+
+        if (
+          playerState?.error ||
+          (
+            currentId &&
+            currentId !== id
+          )
+        ) {
+          return {
+            success: false,
+            message: "The player did not confirm this track."
+          };
+        }
+      }
+
       const library = getLibrary();
 
-      if (library && typeof library.addHistory === "function") {
+      if (
+        library &&
+        typeof library.addHistory === "function"
+      ) {
         library.addHistory(track);
       }
+
+      updateNowPlaying(track);
 
       emitAppEvent("track:play-requested", {
         trackId: id,
         track: track
       });
-
-      updateNowPlaying(track);
 
       return {
         success: true,
@@ -1542,88 +2013,6 @@
     }
   }
 
-  function updateNowPlaying(track) {
-    if (!track) {
-      return;
-    }
-
-    const title = getTrackTitle(track);
-    const artist = getArtistName(track);
-    const artwork = getArtwork(track);
-
-    getElements([
-      "[data-now-playing-title]",
-      "#now-playing-title",
-      "#player-track-title"
-    ].join(",")).forEach(function (element) {
-      element.textContent = title;
-    });
-
-    getElements([
-      "[data-now-playing-artist]",
-      "#now-playing-artist",
-      "#player-track-artist"
-    ].join(",")).forEach(function (element) {
-      element.textContent = artist;
-    });
-
-    getElements([
-      "[data-now-playing-artwork]",
-      "#now-playing-artwork",
-      "#player-track-artwork"
-    ].join(",")).forEach(function (element) {
-      if (element.tagName !== "IMG") {
-        return;
-      }
-
-      const ui = getUI();
-
-      if (ui && typeof ui.setSafeImage === "function") {
-        ui.setSafeImage(element, artwork);
-      } else if (artwork) {
-        element.src = artwork;
-      }
-    });
-  }
-
-  function bindPlayerEvents() {
-    const player = getPlayer();
-
-    if (!player || typeof player.on !== "function") {
-      warn("Player event subscription is unavailable.");
-      return;
-    }
-
-    [
-      "trackchange",
-      "play",
-      "pause",
-      "ended",
-      "timeupdate",
-      "volumechange",
-      "error"
-    ].forEach(function (eventName) {
-      const unsubscribe = player.on(
-        eventName,
-        function (detail) {
-          emitAppEvent("player:" + eventName, detail);
-
-          if (eventName === "trackchange" && detail) {
-            updateNowPlaying(detail.track || detail);
-          }
-        }
-      );
-
-      if (typeof unsubscribe === "function") {
-        state.destroyHandlers.push(unsubscribe);
-      }
-    });
-  }
-
-  /* =========================================================
-     PLAY TRACK BY ID
-     ========================================================= */
-
   async function playTrackById(trackId) {
     const id = String(trackId || "").trim();
 
@@ -1644,18 +2033,20 @@
         ["getRecentlyPlayed", [100]]
       ].forEach(function (entry) {
         const method = entry[0];
-        const args = entry[1];
 
-        if (typeof library[method] === "function") {
-          try {
-            const result = library[method].apply(library, args);
+        if (typeof library[method] !== "function") return;
 
-            if (Array.isArray(result)) {
-              candidates.push.apply(candidates, result);
-            }
-          } catch (error) {
-            recordError(error, "find-local-track:" + method);
+        try {
+          const result = library[method].apply(
+            library,
+            entry[1]
+          );
+
+          if (Array.isArray(result)) {
+            candidates.push.apply(candidates, result);
           }
+        } catch (error) {
+          recordError(error, "find-local-track:" + method);
         }
       });
     }
@@ -1700,88 +2091,6 @@
   }
 
   /* =========================================================
-     PLAYLISTS
-     ========================================================= */
-
-  function loadPlaylists() {
-    const library = getLibrary();
-
-    if (!library || typeof library.getPlaylists !== "function") {
-      return;
-    }
-
-    const container = findFirstElement([
-      "#playlists-list",
-      "#playlists-grid",
-      "[data-section='playlists']"
-    ]);
-
-    if (!container) {
-      return;
-    }
-
-    let playlists;
-
-    try {
-      playlists = library.getPlaylists();
-    } catch (error) {
-      recordError(error, "load-playlists");
-      return;
-    }
-
-    container.replaceChildren();
-
-    if (!Array.isArray(playlists) || !playlists.length) {
-      const ui = getUI();
-
-      if (ui && typeof ui.showEmpty === "function") {
-        ui.showEmpty(container, {
-          icon: "♫",
-          title: "No playlists yet",
-          message: "Your playlists will appear here when you create them."
-        });
-      }
-
-      return;
-    }
-
-    const fragment = document.createDocumentFragment();
-
-    playlists.forEach(function (playlist) {
-      if (!playlist || typeof playlist !== "object") {
-        return;
-      }
-
-      const card = document.createElement("article");
-
-      card.className = "resona-playlist-card";
-
-      const title = document.createElement("h3");
-
-      title.textContent = String(playlist.name || "Untitled playlist");
-
-      const description = document.createElement("p");
-
-      const trackIds = Array.isArray(playlist.trackIds)
-        ? playlist.trackIds
-        : Array.isArray(playlist.track_ids)
-          ? playlist.track_ids
-          : [];
-
-      description.textContent =
-        playlist.description ||
-        trackIds.length + " tracks";
-
-      card.appendChild(title);
-      card.appendChild(description);
-
-      fragment.appendChild(card);
-    });
-
-    container.appendChild(fragment);
-  }
-
-  /* =========================================================
      PAGE LOADING
      ========================================================= */
 
@@ -1816,7 +2125,7 @@
   }
 
   /* =========================================================
-     CLEAR LIBRARY ACTIONS
+     CONFIRMATION AND LIBRARY ACTIONS
      ========================================================= */
 
   async function confirmAction(options) {
@@ -1827,14 +2136,19 @@
     }
 
     return window.confirm(
-      options.message || options.title || "Are you sure?"
+      options.message ||
+      options.title ||
+      "Are you sure?"
     );
   }
 
   async function clearHistoryWithConfirmation() {
     const library = getLibrary();
 
-    if (!library || typeof library.clearHistory !== "function") {
+    if (
+      !library ||
+      typeof library.clearHistory !== "function"
+    ) {
       notify("Listening history is unavailable.", "error");
       return;
     }
@@ -1842,14 +2156,13 @@
     try {
       const confirmed = await confirmAction({
         title: "Clear listening history?",
-        message: "This removes listening history saved in this browser.",
+        message:
+          "This removes listening history saved in this browser.",
         confirmLabel: "Clear history",
         cancelLabel: "Cancel"
       });
 
-      if (!confirmed) {
-        return;
-      }
+      if (!confirmed) return;
 
       library.clearHistory();
       loadLibrary();
@@ -1857,14 +2170,16 @@
       notify("Listening history cleared.", "success");
     } catch (error) {
       recordError(error, "clear-history");
-      notify("Could not clear listening history.", "error");
     }
   }
 
   async function clearLikedWithConfirmation() {
     const library = getLibrary();
 
-    if (!library || typeof library.clearLiked !== "function") {
+    if (
+      !library ||
+      typeof library.clearLiked !== "function"
+    ) {
       notify("Liked tracks are unavailable.", "error");
       return;
     }
@@ -1872,14 +2187,13 @@
     try {
       const confirmed = await confirmAction({
         title: "Clear liked tracks?",
-        message: "This removes liked tracks saved in this browser.",
+        message:
+          "This removes liked tracks saved in this browser.",
         confirmLabel: "Clear liked tracks",
         cancelLabel: "Cancel"
       });
 
-      if (!confirmed) {
-        return;
-      }
+      if (!confirmed) return;
 
       library.clearLiked();
       loadLibrary();
@@ -1887,7 +2201,6 @@
       notify("Liked tracks cleared.", "success");
     } catch (error) {
       recordError(error, "clear-liked");
-      notify("Could not clear liked tracks.", "error");
     }
   }
 
@@ -1910,30 +2223,35 @@
   }
 
   function bindSearch() {
-    const input = getSearchInput();
+    const inputs = getElements(
+      "#search-input, #explore-search-input, " +
+      "#music-search, [data-resona-search-input]"
+    );
 
-    if (!input) {
-      warn("Search input was not found in the HTML.");
+    if (!inputs.length) {
+      warn("No search input was found.");
       return;
     }
 
-    addHandler(
-      input,
-      "input",
-      handleSearchInput
-    );
+    inputs.forEach(function (input) {
+      addHandler(
+        input,
+        "input",
+        handleSearchInput
+      );
 
-    const form = input.closest("form");
+      const form = input.closest("form");
 
-    if (form) {
-      addHandler(form, "submit", function (event) {
-        event.preventDefault();
+      if (form) {
+        addHandler(form, "submit", function (event) {
+          event.preventDefault();
 
-        clearTimeout(state.searchTimer);
+          clearTimeout(state.searchTimer);
 
-        performSearch(input.value);
-      });
-    }
+          performSearch(input.value);
+        });
+      }
+    });
   }
 
   function bindGlobalActions() {
@@ -1946,9 +2264,7 @@
 
       const button = target.closest("[data-resona-action]");
 
-      if (!button) {
-        return;
-      }
+      if (!button) return;
 
       const player = getPlayer();
       const action = button.dataset.resonaAction;
@@ -2040,6 +2356,10 @@
           refresh();
           break;
 
+        case "close-now-playing":
+          navigate(state.lastPage || "home");
+          break;
+
         default:
           break;
       }
@@ -2053,7 +2373,11 @@
       return;
     }
 
-    [
+    /*
+     * These names match the event naming used by
+     * the supplied library module.
+     */
+    const eventNames = [
       "track:liked",
       "track:unliked",
       "track:saved",
@@ -2063,9 +2387,12 @@
       "liked:cleared",
       "saved:cleared",
       "playlist:created",
+      "playlist:updated",
       "playlist:deleted",
       "imported"
-    ].forEach(function (eventName) {
+    ];
+
+    eventNames.forEach(function (eventName) {
       const unsubscribe = library.on(
         eventName,
         function (detail) {
@@ -2082,7 +2409,7 @@
       );
 
       if (typeof unsubscribe === "function") {
-        state.destroyHandlers.push(unsubscribe);
+        state.libraryUnsubscribers.push(unsubscribe);
       }
     });
   }
@@ -2104,7 +2431,10 @@
     try {
       const discovery = getDiscovery();
 
-      if (discovery && typeof discovery.refresh === "function") {
+      if (
+        discovery &&
+        typeof discovery.refresh === "function"
+      ) {
         await discovery.refresh();
       }
 
@@ -2174,16 +2504,25 @@
         library.init();
       }
 
+      const search = getSearch();
+
+      if (search && typeof search.init === "function") {
+        search.init();
+      }
+
       const discovery = getDiscovery();
 
-      if (discovery && typeof discovery.refresh === "function") {
+      if (
+        discovery &&
+        typeof discovery.refresh === "function"
+      ) {
         try {
           await discovery.refresh();
         } catch (error) {
           recordError(error, "initial-discovery");
 
           warn(
-            "Initial catalogue refresh failed; the application will still open."
+            "Initial catalogue refresh failed; opening the application anyway."
           );
         }
       }
@@ -2235,6 +2574,10 @@
     }
   }
 
+  /* =========================================================
+     DESTRUCTION
+     ========================================================= */
+
   function destroy() {
     state.destroyHandlers.forEach(function (cleanup) {
       try {
@@ -2245,6 +2588,26 @@
     });
 
     state.destroyHandlers = [];
+
+    state.playerUnsubscribers.forEach(function (unsubscribe) {
+      try {
+        unsubscribe();
+      } catch (error) {
+        warn("Player cleanup failed.", error);
+      }
+    });
+
+    state.playerUnsubscribers = [];
+
+    state.libraryUnsubscribers.forEach(function (unsubscribe) {
+      try {
+        unsubscribe();
+      } catch (error) {
+        warn("Library cleanup failed.", error);
+      }
+    });
+
+    state.libraryUnsubscribers = [];
 
     clearTimeout(state.searchTimer);
 
@@ -2272,6 +2635,7 @@
     refresh: refresh,
 
     navigate: navigate,
+
     getCurrentPage: function () {
       return state.currentPage;
     },
@@ -2288,6 +2652,7 @@
 
     playTrack: playTrack,
     playTrackById: playTrackById,
+    openPlaylist: openPlaylist,
 
     renderTracks: renderTracks,
     createTrackCard: createTrackCard,
