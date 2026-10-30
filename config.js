@@ -1,5 +1,6 @@
 /* =========================================================
    RESONA — APPLICATION CONFIGURATION
+   Version: 1.1.0
    Global music discovery and streaming platform
    ========================================================= */
 
@@ -7,13 +8,11 @@
 
 window.ResonaConfig = Object.freeze({
 
-  /* -------------------------------------------------------
-     APPLICATION
-     ------------------------------------------------------- */
+  /* APPLICATION */
 
   app: Object.freeze({
     name: "Resona",
-    version: "1.0.0",
+    version: "1.1.0",
     tagline: "Your world. Your sound.",
     description:
       "Discover music, explore artists, and find your next favourite sound from around the world.",
@@ -21,15 +20,12 @@ window.ResonaConfig = Object.freeze({
     defaultRegion: "global"
   }),
 
-  /* -------------------------------------------------------
-     API CONFIGURATION
-     ------------------------------------------------------- */
+  /* API CONFIGURATION */
 
   api: Object.freeze({
 
     /*
-     * Leave empty until the actual backend URL is available.
-     * Example: "https://api.example.com"
+     * Leave empty until the actual backend is ready.
      */
     baseUrl: "",
 
@@ -48,9 +44,14 @@ window.ResonaConfig = Object.freeze({
     })
   }),
 
-  /* -------------------------------------------------------
-     MUSIC DISCOVERY
-     ------------------------------------------------------- */
+  /*
+   * Compatibility with js/api.js.
+   * That module reads apiTimeout.
+   */
+
+  apiTimeout: 15000,
+
+  /* MUSIC DISCOVERY */
 
   discovery: Object.freeze({
 
@@ -81,9 +82,7 @@ window.ResonaConfig = Object.freeze({
     enableGlobalCharts: true
   }),
 
-  /* -------------------------------------------------------
-     MUSIC PLAYER
-     ------------------------------------------------------- */
+  /* MUSIC PLAYER */
 
   player: Object.freeze({
 
@@ -95,28 +94,41 @@ window.ResonaConfig = Object.freeze({
     updateProgressInterval: 1000
   }),
 
-  /* -------------------------------------------------------
-     LOCAL STORAGE
-     ------------------------------------------------------- */
+  /* LOCAL STORAGE */
 
   storage: Object.freeze({
 
     prefix: "resona_",
 
     keys: Object.freeze({
+
       preferences: "resona_preferences",
-      favorites: "resona_favorites",
+
+      /*
+       * Library-compatible storage keys.
+       */
+
+      favorites: "resona_liked_tracks",
+      likedTracks: "resona_liked_tracks",
+
+      savedTracks: "resona_saved_tracks",
+
       history: "resona_history",
-      playlists: "resona_playlists",
+
+      playlists: "resona_library_playlists",
+      libraryPlaylists: "resona_library_playlists",
+
+      libraryVersion: "resona_library_version",
+
+      trackCache: "resona_trackCache",
+
       volume: "resona_volume",
       queue: "resona_queue",
       session: "resona_session"
     })
   }),
 
-  /* -------------------------------------------------------
-     FEATURE FLAGS
-     ------------------------------------------------------- */
+  /* FEATURE FLAGS */
 
   features: Object.freeze({
 
@@ -128,24 +140,14 @@ window.ResonaConfig = Object.freeze({
     artistProfiles: true,
     globalCharts: true,
 
-    /*
-     * Keep authentication and payments disabled until
-     * their backend implementations are ready.
-     */
     authentication: false,
     subscriptions: false,
     offlineMode: false,
 
-    /*
-     * Resona must not pretend to stream music when an
-     * authorised playback source is unavailable.
-     */
     requireAuthorizedPlayback: true
   }),
 
-  /* -------------------------------------------------------
-     INTERFACE
-     ------------------------------------------------------- */
+  /* INTERFACE */
 
   ui: Object.freeze({
 
@@ -161,9 +163,7 @@ window.ResonaConfig = Object.freeze({
     })
   }),
 
-  /* -------------------------------------------------------
-     APPLICATION LIMITS
-     ------------------------------------------------------- */
+  /* APPLICATION LIMITS */
 
   limits: Object.freeze({
 
@@ -175,9 +175,7 @@ window.ResonaConfig = Object.freeze({
 
 });
 
-/* =========================================================
-   RESONA CONFIGURATION READY
-   ========================================================= */
+/* CONFIGURATION READY */
 
 console.info(
   "[Resona] Configuration loaded:",
