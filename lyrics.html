@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#090811">
+<title>Lyrics | Resona</title>
+
+<link rel="stylesheet" href="./css/shared.css">
+
+<style>
+:root{
+  --bg:#090811;
+  --panel:rgba(255,255,255,.045);
+  --border:rgba(255,255,255,.09);
+  --text:#f5f1ff;
+  --muted:#a29ab5;
+  --purple:#a78bfa;
+  --teal:#45dfc2;
+  --lyrics-size:19px;
+}
+
+*{
+  box-sizing:border-box;
+}
+
+body{
+  background:
+    radial-gradient(circle at 50% 0%,rgba(125,75,190,.17),transparent 40%),
+    var(--bg);
+  color:var(--text);
+  min-height:100vh;
+}
+
+button{
+  font:inherit;
+}
+
+body.light-mode{
+  --bg:#f5f2fa;
+  --panel:rgba(0,0,0,.035);
+  --border:rgba(0,0,0,.1);
+  --text:#211b2c;
+  --muted:#716a7e;
+  --purple:#7550c8;
+  --teal:#168c79;
+}
+
+.lyrics-page{
+  width:min(1050px,100%);
+  margin:auto;
+  padding:28px 22px 100px;
+}
+
+.lyrics-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:15px;
+  margin-bottom:30px;
+}
+
+.lyrics-top h1{
+  font-size:18px;
+  margin:0;
+}
+
+.lyrics-top p{
+  font-size:12px;
+  color:var(--muted);
+  margin:5px 0 0;
+}
+
+.icon-button{
+  width:42px;
+  height:42px;
+  display:grid;
+  place-items:center;
+  border:1px solid var(--border);
+  border-radius:50%;
+  color:var(--text);
+  background:var(--panel);
+  cursor:pointer;
+  font-size:17px;
+}
+
+.song-header{
+  display:flex;
+  align-items:center;
+  gap:22px;
+  padding:22px;
+  border:1px solid var(--border);
+  border-radius:20px;
+  background:var(--panel);
+  margin-bottom:25px;
+}
+
+.song-art{
+  width:105px;
+  height:105px;
+  border-radius:13px;
+  object-fit:cover;
+  background:#282235;
+  flex-shrink:0;
+}
+
+.song-details{
+  min-width:0;
+  flex:1;
+}
+
+.song-details h2{
+  font-size:clamp(20px,4vw,28px);
+  margin:0 0 8px;
+  overflow-wrap:anywhere;
+}
+
+.song-details p{
+  color:var(--muted);
+  margin:0 0 13px;
+  font-size:14px;
+}
+
+.song-details a{
+  color:var(--teal);
+  text-decoration:none;
+}
+
+.play-link{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  color:var(--text);
+  text-decoration:none;
+  font-size:12px;
+  padding:9px 13px;
+  border-radius:20px;
+  background:rgba(167,139,250,.13);
+  border:1px solid rgba(167,139,250,.2);
+}
+
+.lyrics-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:12px;
+  margin:22px 0;
+}
+
+.toolbar-group{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.tool-button{
+  padding:9px 12px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:var(--panel);
+  color:var(--text);
+  cursor:pointer;
+  font-size:12px;
+}
+
+.tool-button:hover{
+  border-color:var(--teal);
+}
+
+.lyrics-card{
+  position:relative;
+  border:1px solid var(--border);
+  background:var(--panel);
+  border-radius:20px;
+  padding:35px clamp(20px,5vw,55px);
+  min-height:400px;
+}
+
+.lyrics-heading{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  margin-bottom:25px;
+}
+
+.lyrics-heading h3{
+  margin:0;
+  font-size:15px;
+}
+
+.lyrics-heading span{
+  font-size:11px;
+  color:var(--muted);
+}
+
+.lyrics-text{
+  font-size:var(--lyrics-size);
+  line-height:2.1;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  color:var(--text);
+  max-width:680px;
+  margin:auto;
+  text-align:center;
+}
+
+.lyric-line{
+  display:block;
+  padding:3px 0;
+  opacity:.75;
+  transition:opacity .2s, color .2s, transform .2s;
+}
+
+.lyric-line.active{
+  color:var(--teal);
+  opacity:1;
+  font-weight:700;
+  transform:scale(1.015);
+}
+
+.lyrics-empty{
+  text-align:center;
+  padding:65px 15px;
+  color:var(--muted);
+  line-height:1.9;
+  font-size:14px;
+}
+
+.lyrics-empty strong{
+  display:block;
+  color:var(--text);
+  margin-bottom:9px;
+  font-size:17px;
+}
+
+.lyrics-footer{
+  text-align:center;
+  color:var(--muted);
+  font-size:11px;
+  margin-top:22px;
+  line-height:1.8;
+}
+
+.fullscreen-mode .lyrics-page{
+  width:min(900px,100%);
+}
+
+.fullscreen-mode .song-header{
+  display:none;
+}
+
+.fullscreen-mode .lyrics-top{
+  margin-bottom:15px;
+}
+
+.fullscreen-mode .lyrics-card{
+  min-height:75vh;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+}
+
+.fullscreen-mode .lyrics-text{
+  font-size:clamp(20px,3vw,27px);
+}
+
+.bottom-player{
+  position:fixed;
+  left:0;
+  right:0;
+  bottom:0;
+  z-index:50;
+  padding:12px 18px;
+  padding-bottom:max(12px,env(safe-area-inset-bottom));
+  background:rgba(9,8,17,.94);
+  backdrop-filter:blur(18px);
+  border-top:1px solid var(--border);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:12px;
+}
+
+body.light-mode .bottom-player{
+  background:rgba(245,242,250,.95);
+}
+
+.bottom-player span{
+  font-size:11px;
+  color:var(--muted);
+}
+
+.bottom-player strong{
+  font-size:12px;
+  color:var(--text);
+}
+
+.bottom-player a{
+  color:var(--teal);
+  text-decoration:none;
+  font-size:12px;
+}
+
+.toast{
+  position:fixed;
+  bottom:85px;
+  left:50%;
+  transform:translateX(-50%);
+  background:#211a35;
+  color:white;
+  padding:11px 17px;
+  border-radius:30px;
+  font-size:12px;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .2s;
+  z-index:100;
+}
+
+.toast.show{
+  opacity:1;
+}
+
+@media(max-width:600px){
+  .lyrics-page{
+    padding:20px 15px 100px;
+  }
+
+  .song-header{
+    padding:15px;
+    gap:14px;
+  }
+
+  .song-art{
+    width:82px;
+    height:82px;
+  }
+
+  .lyrics-card{
+    padding:25px 17px;
+  }
+
+  .lyrics-text{
+    font-size:17px;
+    line-height:2;
+  }
+
+  .lyrics-toolbar{
+    align-items:flex-start;
+  }
+}
+</style>
+</head>
+
+<body data-page="lyrics">
+
+<div data-resona-header></div>
+
+<main class="lyrics-page">
+
+  <div class="lyrics-top">
+    <div>
+      <h1>Lyrics</h1>
+      <p>Follow every word. Feel every moment.</p>
+    </div>
+
+    <button class="icon-button" id="backButton" aria-label="Go back">←</button>
+  </div>
+
+  <section class="song-header">
+
+    <img
+      class="song-art"
+      id="songArtwork"
+      alt="Album artwork"
+    >
+
+    <div class="song-details">
+      <h2 id="songTitle">Loading track...</h2>
+
+      <p>
+        <a id="artistLink" href="artist.html">Unknown artist</a>
+      </p>
+
+      <a class="play-link" id="playerLink" href="player.html">
+        ▶ Open music player
+      </a>
+    </div>
+
+  </section>
+
+  <div class="lyrics-toolbar">
+
+    <div class="toolbar-group">
+      <button class="tool-button" id="decreaseSize">A−</button>
+      <button class="tool-button" id="increaseSize">A+</button>
+      <button class="tool-button" id="themeButton">☀ Reading mode</button>
+    </div>
+
+    <div class="toolbar-group">
+      <button class="tool-button" id="copyButton">Copy lyrics</button>
+      <button class="tool-button" id="fullscreenButton">⛶ Focus mode</button>
+    </div>
+
+  </div>
+
+  <section class="lyrics-card">
+
+    <div class="lyrics-heading">
+      <h3>Song lyrics</h3>
+      <span id="lyricsType">Original lyrics</span>
+    </div>
+
+    <div class="lyrics-text" id="lyricsText">
+
+      <div class="lyrics-empty">
+        <strong>Loading lyrics...</strong>
+        Please wait while we retrieve the lyrics.
+      </div>
+
+    </div>
+
+  </section>
+
+  <div class="lyrics-footer">
+    Lyrics are displayed according to the availability and permissions
+    associated with each track.
+    <br>
+    Resona respects artists' rights and lyric copyright.
+  </div>
+
+</main>
+
+<div class="bottom-player">
+  <span>RESONA</span>
+  <strong id="bottomTitle">Lyrics experience</strong>
+  <a id="bottomPlayerLink" href="player.html">Open player →</a>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div data-resona-mobile-nav></div>
+<div data-resona-footer></div>
+
+<script src="./js/navigation.js"></script>
+
+<script>
+(() => {
+  "use strict";
+
+  const API_BASE =
+    "https://resona-api.nearafrica-onyxtech.workers.dev";
+
+  const $ = id => document.getElementById(id);
+
+  const params = new URLSearchParams(location.search);
+  const trackId = params.get("id");
+
+  const FALLBACK_ART =
+    "data:image/svg+xml;charset=UTF-8," +
+    encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="500" height="500">
+        <rect width="100%" height="100%" fill="#211a35"/>
+        <text x="50%" y="52%" fill="#a78bfa"
+          font-size="90" text-anchor="middle"
+          font-family="Arial">R</text>
+      </svg>
+    `);
+
+  let currentLyrics = "";
+  let lyricsSize = 19;
+  let timestampedLines = [];
+  let syncAudio = null;
+  let syncTimer = null;
+
+  function toast(message) {
+    const element = $("toast");
+
+    element.textContent = message;
+    element.classList.add("show");
+
+    clearTimeout(toast.timer);
+
+    toast.timer = setTimeout(() => {
+      element.classList.remove("show");
+    },2500);
+  }
+
+  async function api(path) {
+    const response = await fetch(API_BASE + path,{
+      headers:{
+        "Accept":"application/json"
+      }
+    });
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || result?.success === false) {
+      throw new Error(
+        result?.error ||
+        result?.message ||
+        `Request failed (${response.status})`
+      );
+    }
+
+    return result;
+  }
+
+  function getList(result) {
+    if (Array.isArray(result)) return result;
+    if (Array.isArray(result?.data)) return result.data;
+    if (Array.isArray(result?.tracks)) return result.tracks;
+    if (Array.isArray(result?.results)) return result.results;
+    return [];
+  }
+
+  function getArtwork(track) {
+    const url =
+      track?.artwork_url ||
+      track?.album_artwork_url ||
+      track?.cover_url ||
+      track?.artwork ||
+      "";
+
+    if (!url) return FALLBACK_ART;
+
+    try {
+      const parsed = new URL(url,location.href);
+
+      if (
+        parsed.protocol !== "https:" &&
+        parsed.origin !== location.origin
+      ) {
+        return FALLBACK_ART;
+      }
+
+      return parsed.href;
+    } catch {
+      return FALLBACK_ART;
+    }
+  }
+
+  function setTrack(track) {
+    const title =
+      track?.title ||
+      track?.name ||
+      "Untitled track";
+
+    const artist =
+      track?.artist_name ||
+      track?.artist_display_name ||
+      track?.artist ||
+      "Unknown artist";
+
+    const artistId =
+      track?.artist_id ||
+      track?.artistId ||
+      "";
+
+    $("songTitle").textContent = title;
+    $("bottomTitle").textContent = title;
+    $("artistLink").textContent = artist;
+
+    $("artistLink").href = artistId
+      ? `artist.html?id=${encodeURIComponent(artistId)}`
+      : "artist.html";
+
+    $("songArtwork").src = getArtwork(track);
+
+    $("songArtwork").onerror = () => {
+      $("songArtwork").src = FALLBACK_ART;
+    };
+
+    const playerUrl =
+      `player.html?id=${encodeURIComponent(trackId)}`;
+
+    $("playerLink").href = playerUrl;
+    $("bottomPlayerLink").href = playerUrl;
+
+    document.title = `${title} Lyrics | Resona`;
+  }
+
+  function showEmpty(title,message) {
+    $("lyricsText").innerHTML = "";
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "lyrics-empty";
+
+    const heading = document.createElement("strong");
+    heading.textContent = title;
+
+    const description = document.createElement("div");
+    description.textContent = message;
+
+    wrapper.append(heading,description);
+    $("lyricsText").appendChild(wrapper);
+
+    currentLyrics = "";
+    timestampedLines = [];
+  }
+
+  function parseTimedLyrics(text) {
+    const lines = [];
+
+    const pattern =
+      /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]\s*(.*)/g;
+
+    const rawLines = text.split(/\r?\n/);
+
+    for (const line of rawLines) {
+      const match = pattern.exec(line);
+
+      if (match) {
+        const minutes = Number(match[1]);
+        const seconds = Number(match[2]);
+        const fraction = match[3] || "0";
+
+        const time =
+          minutes * 60 +
+          seconds +
+          Number("0." + fraction);
+
+        lines.push({
+          time,
+          text:match[4] || ""
+        });
+      } else if (line.trim()) {
+        lines.push({
+          time:null,
+          text:line
+        });
+      }
+
+      pattern.lastIndex = 0;
+    }
+
+    return lines;
+  }
+
+  function displayLyrics(text) {
+    currentLyrics = text;
+
+    $("lyricsText").innerHTML = "";
+
+    timestampedLines = parseTimedLyrics(text);
+
+    const hasTimestamps =
+      timestampedLines.some(line => line.time !== null);
+
+    $("lyricsType").textContent =
+      hasTimestamps ? "Timed lyrics" : "Original lyrics";
+
+    if (!hasTimestamps) {
+      $("lyricsText").textContent = text;
+      return;
+    }
+
+    timestampedLines.forEach((line,index) => {
+      const element = document.createElement("span");
+
+      element.className = "lyric-line";
+      element.textContent = line.text;
+      element.dataset.index = index;
+
+      $("lyricsText").appendChild(element);
+    });
+  }
+
+  async function loadLyrics() {
+    if (!trackId) {
+      showEmpty(
+        "No track selected",
+        "Open lyrics from a song in Resona to see its lyrics."
+      );
+      return;
+    }
+
+    try {
+      const result = await api(
+        `/lyrics?track_id=${encodeURIComponent(trackId)}`
+      );
+
+      const data = result?.data || result;
+
+      const lyrics =
+        typeof data === "string"
+          ? data
+          : (
+              data?.lyrics ||
+              data?.text ||
+              data?.content ||
+              ""
+            );
+
+      if (!lyrics || typeof lyrics !== "string") {
+        showEmpty(
+          "Lyrics unavailable",
+          "Lyrics have not been added or are not available for this track yet."
+        );
+        return;
+      }
+
+      displayLyrics(lyrics);
+
+    } catch (error) {
+      showEmpty(
+        "Unable to load lyrics",
+        error.message || "Please try again later."
+      );
+    }
+  }
+
+  async function loadTrack() {
+    if (!trackId) {
+      $("songTitle").textContent = "No track selected";
+      $("bottomTitle").textContent = "No track selected";
+
+      showEmpty(
+        "Choose a song",
+        "Select a song from Explore or Search to view its lyrics."
+      );
+
+      return;
+    }
+
+    try {
+      const result = await api("/tracks?limit=100&offset=0");
+
+      const tracks = getList(result);
+
+      const track = tracks.find(item =>
+        String(item?.id ?? item?.track_id ?? item?.trackId ?? "") ===
+        String(trackId)
+      );
+
+      if (!track) {
+        $("songTitle").textContent = "Track not found";
+
+        showEmpty(
+          "Track not found",
+          "The requested track could not be found in the loaded catalogue."
+        );
+
+        return;
+      }
+
+      setTrack(track);
+      await loadLyrics();
+
+    } catch (error) {
+      $("songTitle").textContent = "Unable to load track";
+
+      showEmpty(
+        "Connection problem",
+        error.message || "Unable to connect to Resona."
+      );
+    }
+  }
+
+  $("increaseSize").addEventListener("click",() => {
+    lyricsSize = Math.min(lyricsSize + 2,32);
+
+    document.documentElement.style.setProperty(
+      "--lyrics-size",
+      lyricsSize + "px"
+    );
+  });
+
+  $("decreaseSize").addEventListener("click",() => {
+    lyricsSize = Math.max(lyricsSize - 2,13);
+
+    document.documentElement.style.setProperty(
+      "--lyrics-size",
+      lyricsSize + "px"
+    );
+  });
+
+  $("themeButton").addEventListener("click",() => {
+    document.body.classList.toggle("light-mode");
+
+    const light =
+      document.body.classList.contains("light-mode");
+
+    $("themeButton").textContent =
+      light ? "☾ Dark mode" : "☀ Reading mode";
+  });
+
+  $("copyButton").addEventListener("click",async () => {
+    if (!currentLyrics) {
+      toast("There are no lyrics to copy.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(currentLyrics);
+      toast("Lyrics copied.");
+    } catch {
+      toast("Copying is unavailable in this browser.");
+    }
+  });
+
+  $("fullscreenButton").addEventListener("click",async () => {
+    document.body.classList.toggle("fullscreen-mode");
+
+    const active =
+      document.body.classList.contains("fullscreen-mode");
+
+    $("fullscreenButton").textContent =
+      active ? "✕ Exit focus mode" : "⛶ Focus mode";
+
+    if (active && document.documentElement.requestFullscreen) {
+      try {
+        await document.documentElement.requestFullscreen();
+      } catch {
+        // CSS focus mode still works if browser fullscreen is unavailable.
+      }
+    } else if (
+      !active &&
+      document.fullscreenElement &&
+      document.exitFullscreen
+    ) {
+      try {
+        await document.exitFullscreen();
+      } catch {}
+    }
+  });
+
+  document.addEventListener("fullscreenchange",() => {
+    if (!document.fullscreenElement) {
+      document.body.classList.remove("fullscreen-mode");
+      $("fullscreenButton").textContent = "⛶ Focus mode";
+    }
+  });
+
+  $("backButton").addEventListener("click",() => {
+    if (history.length > 1) {
+      history.back();
+    } else {
+      location.href = "explore.html";
+    }
+  });
+
+  /*
+    Synchronisation support:
+    This looks for an audio element on the page.
+    The dedicated player page can later expose its audio element
+    through a shared player controller for cross-page synchronisation.
+  */
+
+  function synchroniseLyrics() {
+    if (!timestampedLines.length) return;
+
+    const audioElement =
+      document.querySelector("audio");
+
+    if (!audioElement || !Number.isFinite(audioElement.currentTime)) {
+      return;
+    }
+
+    let activeIndex = -1;
+
+    timestampedLines.forEach((line,index) => {
+      if (
+        line.time !== null &&
+        line.time <= audioElement.currentTime
+      ) {
+        activeIndex = index;
+      }
+    });
+
+    document.querySelectorAll(".lyric-line").forEach(element => {
+      const active =
+        Number(element.dataset.index) === activeIndex;
+
+      element.classList.toggle("active",active);
+
+      if (active) {
+        element.scrollIntoView({
+          behavior:"smooth",
+          block:"center"
+        });
+      }
+    });
+  }
+
+  loadTrack();
+
+})();
+</script>
+
+</body>
+  </html>
