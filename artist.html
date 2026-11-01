@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#090811">
+
+<title>Artist | Resona</title>
+<meta name="description" content="Discover music, albums and songs from your favourite artists on Resona.">
+
+<link rel="stylesheet" href="./css/shared.css">
+
+<style>
+:root {
+  --artist-bg: #090811;
+  --artist-card: rgba(255,255,255,.045);
+  --artist-border: rgba(255,255,255,.09);
+  --artist-purple: #9b78ff;
+  --artist-teal: #42dbc5;
+  --artist-text: #f5f2ff;
+  --artist-muted: #aaa4bd;
+}
+
+body {
+  background: var(--artist-bg);
+}
+
+.artist-page {
+  width: min(1150px, 100%);
+  margin: auto;
+  padding: 25px 20px 100px;
+}
+
+/* HERO */
+
+.artist-hero {
+  position: relative;
+  min-height: 340px;
+  border-radius: 23px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 80% 20%, rgba(155,120,255,.3), transparent 40%),
+    linear-gradient(130deg, #211638, #101d2d 65%, #102b30);
+  display: flex;
+  align-items: flex-end;
+  padding: 35px;
+  margin-bottom: 30px;
+}
+
+.artist-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(8,7,16,.92),
+    rgba(8,7,16,.55) 65%,
+    rgba(8,7,16,.2)
+  );
+}
+
+.artist-hero-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 28px;
+  width: 100%;
+}
+
+.artist-avatar {
+  width: 185px;
+  height: 185px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3c2863, #17645f);
+  border: 4px solid rgba(255,255,255,.12);
+  box-shadow: 0 15px 50px rgba(0,0,0,.35);
+}
+
+.artist-information {
+  min-width: 0;
+}
+
+.artist-eyebrow {
+  color: var(--artist-teal);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 9px;
+}
+
+.artist-name {
+  color: white;
+  font-size: clamp(32px, 6vw, 57px);
+  line-height: 1.08;
+  letter-spacing: -1.8px;
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+
+.verified-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #83dfff;
+  font-size: 12px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.verified-badge[hidden] {
+  display: none;
+}
+
+.artist-meta {
+  color: rgba(255,255,255,.72);
+  font-size: 13px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.artist-meta .dot {
+  opacity: .5;
+}
+
+.artist-description {
+  color: rgba(255,255,255,.76);
+  font-size: 13px;
+  line-height: 1.8;
+  max-width: 650px;
+  margin-top: 14px;
+}
+
+.artist-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.artist-play-button {
+  border: 0;
+  border-radius: 30px;
+  padding: 12px 24px;
+  background: linear-gradient(110deg, #a17cff, #6e75e9);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.artist-play-button:hover {
+  filter: brightness(1.1);
+}
+
+.artist-action-note {
+  color: rgba(255,255,255,.6);
+  font-size: 11px;
+}
+
+/* SECTIONS */
+
+.artist-section {
+  margin-top: 38px;
+}
+
+.artist-section[hidden] {
+  display: none;
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.section-heading h2 {
+  font-size: 21px;
+  margin: 0;
+}
+
+.section-count {
+  color: var(--artist-muted);
+  font-size: 12px;
+}
+
+/* TRACK LIST */
+
+.track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.track-row {
+  display: grid;
+  grid-template-columns: 35px 48px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 13px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--artist-text);
+  text-decoration: none;
+  transition: background .2s;
+}
+
+.track-row:hover {
+  background: rgba(255,255,255,.065);
+}
+
+.track-number {
+  color: var(--artist-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.track-artwork {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: linear-gradient(135deg, #30204f, #14514e);
+}
+
+.track-details {
+  min-width: 0;
+}
+
+.track-title {
+  font-size: 14px;
+  font-weight: 650;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.track-album {
+  font-size: 11px;
+  color: var(--artist-muted);
+  margin-top: 5px;
+}
+
+.track-duration {
+  color: var(--artist-muted);
+  font-size: 12px;
+}
+
+/* ALBUMS */
+
+.album-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  gap: 17px;
+}
+
+.album-card {
+  display: block;
+  text-decoration: none;
+  color: var(--artist-text);
+  padding: 12px;
+  background: var(--artist-card);
+  border: 1px solid var(--artist-border);
+  border-radius: 15px;
+  transition: .2s;
+  min-width: 0;
+}
+
+.album-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(155,120,255,.5);
+  background: rgba(255,255,255,.075);
+}
+
+.album-artwork {
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+  object-fit: cover;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #30204f, #14514e);
+  margin-bottom: 12px;
+}
+
+.album-title {
+  font-size: 13px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.album-artist {
+  color: var(--artist-muted);
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+/* STATES */
+
+.artist-state {
+  padding: 55px 20px;
+  border: 1px dashed var(--artist-border);
+  border-radius: 17px;
+  text-align: center;
+  color: var(--artist-muted);
+}
+
+.artist-state h2 {
+  color: var(--artist-text);
+  font-size: 20px;
+  margin: 0 0 9px;
+}
+
+.artist-state p {
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.artist-state button {
+  margin-top: 18px;
+  border: 0;
+  border-radius: 30px;
+  padding: 11px 22px;
+  background: linear-gradient(110deg, #9873f5, #6575e9);
+  color: white;
+  cursor: pointer;
+}
+
+.artist-loading {
+  height: 300px;
+  border-radius: 20px;
+  background: linear-gradient(
+    100deg,
+    rgba(255,255,255,.025) 20%,
+    rgba(255,255,255,.075) 40%,
+    rgba(255,255,255,.025) 60%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position-x: -200%;
+  }
+}
+
+@media(max-width:650px) {
+  .artist-page {
+    padding: 18px 14px 90px;
+  }
+
+  .artist-hero {
+    min-height: 0;
+    padding: 25px 18px;
+  }
+
+  .artist-hero-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 18px;
+  }
+
+  .artist-avatar {
+    width: 135px;
+    height: 135px;
+  }
+
+  .artist-name {
+    font-size: 34px;
+  }
+
+  .artist-description {
+    font-size: 12px;
+  }
+
+  .album-grid {
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    gap: 12px;
+  }
+
+  .album-card {
+    padding: 9px;
+  }
+
+  .track-row {
+    grid-template-columns: 22px 43px minmax(0,1fr) auto;
+    gap: 9px;
+    padding: 9px 5px;
+  }
+
+  .track-artwork {
+    width: 43px;
+    height: 43px;
+  }
+}
+</style>
+</head>
+
+<body data-page="artist">
+
+<div data-resona-header></div>
+
+<main class="artist-page">
+
+  <div id="loadingState" class="artist-loading"></div>
+
+  <div id="errorState" class="artist-state" hidden>
+    <h2>We couldn't load this artist</h2>
+    <p id="errorMessage">
+      Something went wrong while loading the artist profile.
+    </p>
+    <button id="retryButton" type="button">Try again</button>
+  </div>
+
+  <div id="notFoundState" class="artist-state" hidden>
+    <h2>Artist not found</h2>
+    <p>This artist profile may not exist or may no longer be available.</p>
+  </div>
+
+  <div id="artistContent" hidden>
+
+    <section class="artist-hero">
+
+      <div class="artist-hero-content">
+
+        <img
+          id="artistAvatar"
+          class="artist-avatar"
+          src=""
+          alt="Artist profile"
+        >
+
+        <div class="artist-information">
+
+          <div class="artist-eyebrow">Resona Artist</div>
+
+          <h1 class="artist-name">
+            <span id="artistName">Artist</span>
+
+            <span
+              id="verifiedBadge"
+              class="verified-badge"
+              hidden
+            >
+              ✓ Verified
+            </span>
+          </h1>
+
+          <div class="artist-meta">
+            <span id="artistCountry">Worldwide</span>
+            <span class="dot">•</span>
+            <span id="artistTrackCount">0 songs</span>
+            <span class="dot">•</span>
+            <span id="artistAlbumCount">0 albums</span>
+          </div>
+
+          <p id="artistBio" class="artist-description" hidden></p>
+
+          <div class="artist-actions">
+            <button id="playArtistButton" class="artist-play-button" type="button">
+              ▶ Play artist
+            </button>
+
+            <span class="artist-action-note">
+              Discover this artist's music
+            </span>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <section id="popularSection" class="artist-section" hidden>
+
+      <div class="section-heading">
+        <h2>Popular songs</h2>
+        <span id="popularCount" class="section-count"></span>
+      </div>
+
+      <div id="popularTracks" class="track-list"></div>
+
+    </section>
+
+    <section id="songsSection" class="artist-section" hidden>
+
+      <div class="section-heading">
+        <h2>All songs</h2>
+        <span id="songsCount" class="section-count"></span>
+      </div>
+
+      <div id="allTracks" class="track-list"></div>
+
+    </section>
+
+    <section id="albumsSection" class="artist-section" hidden>
+
+      <div class="section-heading">
+        <h2>Albums</h2>
+        <span id="albumsCount" class="section-count"></span>
+      </div>
+
+      <div id="albumsGrid" class="album-grid"></div>
+
+    </section>
+
+    <div id="noMusicState" class="artist-state" hidden>
+      <h2>No music available yet</h2>
+      <p>This artist has not published any music in the catalogue yet.</p>
+    </div>
+
+  </div>
+
+</main>
+
+<div data-resona-mobile-nav></div>
+<div data-resona-footer></div>
+
+<script src="./js/navigation.js"></script>
+
+<script>
+(() => {
+  "use strict";
+
+  const API_BASE =
+    "https://resona-api.nearafrica-onyxtech.workers.dev";
+
+  const CATALOGUE_LIMIT = 100;
+
+  const params = new URLSearchParams(window.location.search);
+
+  const requestedArtistId = (
+    params.get("id") || ""
+  ).trim();
+
+  const elements = {
+    loading: document.getElementById("loadingState"),
+    error: document.getElementById("errorState"),
+    errorMessage: document.getElementById("errorMessage"),
+    notFound: document.getElementById("notFoundState"),
+    content: document.getElementById("artistContent"),
+
+    avatar: document.getElementById("artistAvatar"),
+    name: document.getElementById("artistName"),
+    verified: document.getElementById("verifiedBadge"),
+    country: document.getElementById("artistCountry"),
+    trackCount: document.getElementById("artistTrackCount"),
+    albumCount: document.getElementById("artistAlbumCount"),
+    bio: document.getElementById("artistBio"),
+
+    popularSection: document.getElementById("popularSection"),
+    popularTracks: document.getElementById("popularTracks"),
+    popularCount: document.getElementById("popularCount"),
+
+    songsSection: document.getElementById("songsSection"),
+    allTracks: document.getElementById("allTracks"),
+    songsCount: document.getElementById("songsCount"),
+
+    albumsSection: document.getElementById("albumsSection"),
+    albumsGrid: document.getElementById("albumsGrid"),
+    albumsCount: document.getElementById("albumsCount"),
+
+    noMusic: document.getElementById("noMusicState"),
+
+    playButton: document.getElementById("playArtistButton"),
+    retry: document.getElementById("retryButton")
+  };
+
+  let currentArtist = null;
+  let currentTracks = [];
+
+  function text(value) {
+    if (value === null || value === undefined) return "";
+    return String(value).trim();
+  }
+
+  function valueFrom(object, keys) {
+    for (const key of keys) {
+      const value = object && object[key];
+
+      if (value !== null && value !== undefined && value !== "") {
+        return value;
+      }
+    }
+
+    return "";
+  }
+
+  function artistId(artist) {
+    return text(valueFrom(artist, [
+      "id",
+      "artist_id"
+    ]));
+  }
+
+  function trackId(track) {
+    return text(valueFrom(track, [
+      "id",
+      "track_id"
+    ]));
+  }
+
+  function albumId(album) {
+    return text(valueFrom(album, [
+      "id",
+      "album_id"
+    ]));
+  }
+
+  function artistName(artist) {
+    return text(valueFrom(artist, [
+      "artist_name",
+      "display_name",
+      "name",
+      "username"
+    ])) || "Unknown artist";
+  }
+
+  function trackTitle(track) {
+    return text(valueFrom(track, [
+      "title",
+      "track_title",
+      "name"
+    ])) || "Untitled song";
+  }
+
+  function albumTitle(album) {
+    return text(valueFrom(album, [
+      "title",
+      "album_title",
+      "name"
+    ])) || "Untitled album";
+  }
+
+  function getImage(object, keys) {
+    const raw = text(valueFrom(object, keys));
+
+    if (!raw) return "";
+
+    try {
+      const url = new URL(raw, window.location.origin);
+
+      if (url.protocol !== "https:" && url.origin !== window.location.origin) {
+        return "";
+      }
+
+      if (!["https:", "http:"].includes(url.protocol)) {
+        return "";
+      }
+
+      return url.href;
+
+    } catch {
+      return "";
+    }
+  }
+
+  function setImage(element, url) {
+    if (url) {
+      element.src = url;
+    } else {
+      element.removeAttribute("src");
+    }
+  }
+
+  function showError(message) {
+    elements.loading.hidden = true;
+    elements.content.hidden = true;
+    elements.notFound.hidden = true;
+    elements.error.hidden = false;
+
+    elements.errorMessage.textContent = message;
+  }
+
+  async function fetchCatalogue(endpoint) {
+    const url = new URL(API_BASE + endpoint);
+
+    url.searchParams.set("limit", String(CATALOGUE_LIMIT));
+    url.searchParams.set("offset", "0");
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        "Accept": "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        "Request failed with HTTP " + response.status
+      );
+    }
+
+    const result = await response.json();
+
+    if (!result || result.success !== true || !Array.isArray(result.data)) {
+      throw new Error("Unexpected catalogue response.");
+    }
+
+    return result.data;
+  }
+
+  function sameId(a, b) {
+    return Boolean(a && b) && String(a) === String(b);
+  }
+
+  function trackBelongsToArtist(track, artist) {
+    const linkedArtistId = text(valueFrom(track, [
+      "artist_id",
+      "artistId"
+    ]));
+
+    if (linkedArtistId) {
+      return sameId(linkedArtistId, artistId(artist));
+    }
+
+    const linkedArtistName = text(valueFrom(track, [
+      "artist_name",
+      "artist"
+    ])).toLowerCase();
+
+    return linkedArtistName === artistName(artist).toLowerCase();
+  }
+
+  function albumBelongsToArtist(album, artist) {
+    const linkedArtistId = text(valueFrom(album, [
+      "artist_id",
+      "artistId"
+    ]));
+
+    if (linkedArtistId) {
+      return sameId(linkedArtistId, artistId(artist));
+    }
+
+    const linkedArtistName = text(valueFrom(album, [
+      "artist_name",
+      "artist"
+    ])).toLowerCase();
+
+    return linkedArtistName === artistName(artist).toLowerCase();
+  }
+
+  function formatDuration(value) {
+    const seconds = Number(value);
+
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      return "";
+    }
+
+    const minutes = Math.floor(seconds / 60);
+    const remaining = Math.floor(seconds % 60);
+
+    return minutes + ":" + String(remaining).padStart(2, "0");
+  }
+
+  function createTrackRow(track, index) {
+    const id = trackId(track);
+
+    if (!id) return null;
+
+    const link = document.createElement("a");
+
+    link.className = "track-row";
+    link.href = "./player.html?id=" + encodeURIComponent(id);
+
+    const number = document.createElement("span");
+    number.className = "track-number";
+    number.textContent = String(index + 1);
+
+    const artwork = document.createElement("img");
+    artwork.className = "track-artwork";
+    artwork.alt = trackTitle(track);
+    artwork.loading = "lazy";
+
+    const image = getImage(track, [
+      "artwork_url",
+      "album_artwork_url",
+      "cover_url",
+      "image_url"
+    ]);
+
+    if (image) {
+      artwork.src = image;
+    }
+
+    artwork.addEventListener("error", () => {
+      artwork.removeAttribute("src");
+    }, { once: true });
+
+    const details = document.createElement("div");
+    details.className = "track-details";
+
+    const title = document.createElement("div");
+    title.className = "track-title";
+    title.textContent = trackTitle(track);
+
+    const album = document.createElement("div");
+    album.className = "track-album";
+    album.textContent = text(valueFrom(track, [
+      "album_title",
+      "album_name"
+    ])) || "Single";
+
+    details.append(title, album);
+
+    const duration = document.createElement("span");
+    duration.className = "track-duration";
+    duration.textContent = formatDuration(valueFrom(track, [
+      "duration_seconds",
+      "duration"
+    ]));
+
+    link.append(number, artwork, details, duration);
+
+    return link;
+  }
+
+  function renderTrackList(container, tracks) {
+    container.replaceChildren();
+
+    tracks.forEach((track, index) => {
+      const row = createTrackRow(track, index);
+
+      if (row) {
+        container.appendChild(row);
+      }
+    });
+  }
+
+  function createAlbumCard(album) {
+    const id = albumId(album);
+
+    if (!id) return null;
+
+    const link = document.createElement("a");
+
+    link.className = "album-card";
+    link.href = "./album.html?id=" + encodeURIComponent(id);
+
+    const artwork = document.createElement("img");
+
+    artwork.className = "album-artwork";
+    artwork.alt = albumTitle(album);
+    artwork.loading = "lazy";
+
+    const image = getImage(album, [
+      "artwork_url",
+      "cover_url",
+      "image_url"
+    ]);
+
+    if (image) {
+      artwork.src = image;
+    }
+
+    artwork.addEventListener("error", () => {
+      artwork.removeAttribute("src");
+    }, { once: true });
+
+    const title = document.createElement("div");
+    title.className = "album-title";
+    title.textContent = albumTitle(album);
+
+    const artist = document.createElement("div");
+    artist.className = "album-artist";
+    artist.textContent = artistName(currentArtist);
+
+    link.append(artwork, title, artist);
+
+    return link;
+  }
+
+  function renderAlbums(albums) {
+    elements.albumsGrid.replaceChildren();
+
+    albums.forEach(album => {
+      const card = createAlbumCard(album);
+
+      if (card) {
+        elements.albumsGrid.appendChild(card);
+      }
+    });
+
+    elements.albumsCount.textContent =
+      albums.length + (albums.length === 1 ? " album" : " albums");
+
+    elements.albumsSection.hidden = albums.length === 0;
+  }
+
+  function renderArtist(artist, tracks, albums) {
+    currentArtist = artist;
+    currentTracks = tracks;
+
+    document.title = artistName(artist) + " | Resona";
+
+    elements.name.textContent = artistName(artist);
+
+    const profileImage = getImage(artist, [
+      "profile_image_url",
+      "avatar_url",
+      "image_url",
+      "artwork_url"
+    ]);
+
+    setImage(elements.avatar, profileImage);
+
+    const verified = valueFrom(artist, [
+      "verified",
+      "is_verified"
+    ]);
+
+    elements.verified.hidden = !(
+      verified === true ||
+      verified === 1 ||
+      verified === "1"
+    );
+
+    const country = text(valueFrom(artist, [
+      "country_name",
+      "country",
+      "country_code"
+    ]));
+
+    elements.country.textContent = country || "Worldwide";
+
+    const biography = text(valueFrom(artist, [
+      "bio",
+      "biography",
+      "description"
+    ]));
+
+    elements.bio.textContent = biography;
+    elements.bio.hidden = !biography;
+
+    elements.trackCount.textContent =
+      tracks.length + (tracks.length === 1 ? " song" : " songs");
+
+    elements.albumCount.textContent =
+      albums.length + (albums.length === 1 ? " album" : " albums");
+
+    const sortedTracks = [...tracks];
+
+    const popularTracks = sortedTracks
+      .filter(track => {
+        return Boolean(valueFrom(track, [
+          "is_popular",
+          "is_featured",
+          "is_trending"
+        ]));
+      });
+
+    const popular = popularTracks.length
+      ? popularTracks.slice(0, 5)
+      : sortedTracks.slice(0, 5);
+
+    renderTrackList(elements.popularTracks, popular);
+
+    elements.popularCount.textContent =
+      popular.length + (popular.length === 1 ? " song" : " songs");
+
+    elements.popularSection.hidden = popular.length === 0;
+
+    renderTrackList(elements.allTracks, sortedTracks);
+
+    elements.songsCount.textContent =
+      tracks.length + (tracks.length === 1 ? " song" : " songs");
+
+    elements.songsSection.hidden = tracks.length === 0;
+
+    renderAlbums(albums);
+
+    elements.noMusic.hidden = tracks.length > 0 || albums.length > 0;
+
+    elements.loading.hidden = true;
+    elements.error.hidden = true;
+    elements.notFound.hidden = true;
+    elements.content.hidden = false;
+  }
+
+  async function loadArtist() {
+    if (!requestedArtistId) {
+      elements.loading.hidden = true;
+      elements.notFound.hidden = false;
+      return;
+    }
+
+    elements.loading.hidden = false;
+    elements.error.hidden = true;
+    elements.notFound.hidden = true;
+    elements.content.hidden = true;
+
+    try {
+      const [artists, tracks, albums] = await Promise.all([
+        fetchCatalogue("/artists"),
+        fetchCatalogue("/tracks"),
+        fetchCatalogue("/albums")
+      ]);
+
+      const artist = artists.find(item => {
+        return sameId(artistId(item), requestedArtistId);
+      });
+
+      if (!artist) {
+        elements.loading.hidden = true;
+        elements.notFound.hidden = false;
+        return;
+      }
+
+      const artistTracks = tracks.filter(track => {
+        return trackBelongsToArtist(track, artist);
+      });
+
+      const artistAlbums = albums.filter(album => {
+        return albumBelongsToArtist(album, artist);
+      });
+
+      renderArtist(artist, artistTracks, artistAlbums);
+
+    } catch (error) {
+      console.error("[Resona Artist]", error);
+
+      showError(
+        "We couldn't retrieve this artist's information. Check your connection and try again."
+      );
+    }
+  }
+
+  elements.playButton.addEventListener("click", () => {
+    if (!currentTracks.length) {
+      if (window.ResonaNavigation &&
+          typeof window.ResonaNavigation.showToast === "function") {
+        window.ResonaNavigation.showToast(
+          "This artist has no available songs yet."
+        );
+      }
+
+      return;
+    }
+
+    const firstTrack = currentTracks[0];
+    const id = trackId(firstTrack);
+
+    if (id) {
+      window.location.href =
+        "./player.html?id=" + encodeURIComponent(id);
+    }
+  });
+
+  elements.retry.addEventListener("click", loadArtist);
+
+  loadArtist();
+
+})();
+</script>
+
+</body>
+</html>
