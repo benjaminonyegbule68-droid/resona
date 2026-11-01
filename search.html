@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#090811">
+
+<title>Search | Resona</title>
+
+<meta name="description" content="Discover songs, artists and albums from around the world on Resona.">
+
+<link rel="stylesheet" href="./css/shared.css">
+
+<style>
+:root {
+  --search-bg: #090811;
+  --search-card: rgba(255,255,255,.045);
+  --search-border: rgba(255,255,255,.09);
+  --search-purple: #9b78ff;
+  --search-teal: #42dbc5;
+  --search-text: #f5f2ff;
+  --search-muted: #aaa4bd;
+}
+
+body {
+  background: var(--search-bg);
+}
+
+.search-page {
+  width: min(1120px, 100%);
+  margin: auto;
+  padding: 34px 20px 100px;
+}
+
+.search-heading {
+  margin-bottom: 28px;
+}
+
+.search-heading h1 {
+  font-size: clamp(30px, 6vw, 46px);
+  letter-spacing: -1.5px;
+  margin: 0 0 9px;
+}
+
+.search-heading p {
+  color: var(--search-muted);
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255,255,255,.065);
+  border: 1px solid rgba(155,120,255,.28);
+  border-radius: 17px;
+  padding: 0 17px;
+  min-height: 62px;
+  transition: border-color .2s, box-shadow .2s;
+}
+
+.search-box:focus-within {
+  border-color: var(--search-purple);
+  box-shadow: 0 0 0 4px rgba(155,120,255,.09);
+}
+
+.search-icon {
+  font-size: 22px;
+  color: var(--search-muted);
+}
+
+.search-box input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--search-text);
+  font-size: 16px;
+  padding: 17px 0;
+}
+
+.search-box input::placeholder {
+  color: #898399;
+}
+
+.clear-search {
+  border: 0;
+  background: transparent;
+  color: var(--search-muted);
+  font-size: 23px;
+  cursor: pointer;
+  display: none;
+  padding: 5px;
+}
+
+.clear-search.visible {
+  display: block;
+}
+
+.search-shortcut {
+  color: #8f899f;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.search-suggestions {
+  display: none;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--search-border);
+  border-radius: 14px;
+  background: #151220;
+}
+
+.search-suggestions.visible {
+  display: block;
+}
+
+.suggestion-label {
+  color: var(--search-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 4px 8px 9px;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 9px;
+  background: transparent;
+  border: 0;
+  color: var(--search-text);
+  text-align: left;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.suggestion-item:hover {
+  background: rgba(255,255,255,.07);
+}
+
+.suggestion-item span:last-child {
+  color: var(--search-muted);
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.search-filters {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin: 25px 0 30px;
+}
+
+.filter-button {
+  border: 1px solid var(--search-border);
+  background: rgba(255,255,255,.035);
+  color: var(--search-muted);
+  border-radius: 30px;
+  padding: 10px 17px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: .2s;
+}
+
+.filter-button.active {
+  background: rgba(155,120,255,.17);
+  color: #d9ccff;
+  border-color: rgba(155,120,255,.55);
+}
+
+.filter-button:hover {
+  border-color: var(--search-purple);
+}
+
+.search-status {
+  color: var(--search-muted);
+  font-size: 13px;
+  margin: 0 0 23px;
+  min-height: 18px;
+}
+
+.results-section {
+  margin-bottom: 38px;
+}
+
+.results-section[hidden] {
+  display: none;
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 17px;
+}
+
+.section-heading h2 {
+  font-size: 19px;
+  margin: 0;
+}
+
+.result-count {
+  color: var(--search-muted);
+  font-size: 12px;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 17px;
+}
+
+.result-card {
+  min-width: 0;
+  background: var(--search-card);
+  border: 1px solid var(--search-border);
+  border-radius: 15px;
+  padding: 12px;
+  text-decoration: none;
+  color: var(--search-text);
+  transition: transform .2s, border-color .2s, background .2s;
+  display: block;
+}
+
+.result-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(155,120,255,.45);
+  background: rgba(255,255,255,.075);
+}
+
+.result-image {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  display: block;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #211638, #123b3c);
+  margin-bottom: 12px;
+}
+
+.result-image.artist-image {
+  border-radius: 50%;
+}
+
+.result-title {
+  font-size: 14px;
+  font-weight: 650;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin-bottom: 6px;
+}
+
+.result-subtitle {
+  font-size: 12px;
+  color: var(--search-muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.result-type {
+  display: inline-block;
+  margin-top: 9px;
+  padding: 4px 8px;
+  border-radius: 20px;
+  background: rgba(66,219,197,.09);
+  color: var(--search-teal);
+  font-size: 10px;
+}
+
+.empty-state,
+.loading-state,
+.error-state,
+.welcome-state {
+  text-align: center;
+  padding: 55px 20px;
+  border: 1px dashed var(--search-border);
+  border-radius: 17px;
+  color: var(--search-muted);
+}
+
+.state-icon {
+  font-size: 38px;
+  margin-bottom: 14px;
+}
+
+.empty-state h3,
+.error-state h3,
+.welcome-state h3 {
+  color: var(--search-text);
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.empty-state p,
+.error-state p,
+.welcome-state p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.retry-button {
+  display: inline-block;
+  margin-top: 17px;
+  border: 0;
+  border-radius: 30px;
+  padding: 11px 20px;
+  color: white;
+  background: linear-gradient(100deg, #8058e9, #536fe5);
+  cursor: pointer;
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 17px;
+}
+
+.skeleton-card {
+  height: 220px;
+  border-radius: 15px;
+  background: linear-gradient(
+    100deg,
+    rgba(255,255,255,.035) 20%,
+    rgba(255,255,255,.09) 40%,
+    rgba(255,255,255,.035) 60%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes shimmer {
+  to { background-position-x: -200%; }
+}
+
+@media(max-width:600px) {
+  .search-page {
+    padding: 25px 15px 90px;
+  }
+
+  .search-heading h1 {
+    font-size: 32px;
+  }
+
+  .search-shortcut {
+    display: none;
+  }
+
+  .result-grid,
+  .skeleton-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .result-card {
+    padding: 9px;
+  }
+
+  .result-title {
+    font-size: 13px;
+  }
+}
+</style>
+</head>
+
+<body data-page="search">
+
+<div data-resona-header></div>
+
+<main class="search-page">
+
+  <header class="search-heading">
+    <h1>Search</h1>
+    <p>Find songs, artists and albums from around the world.</p>
+  </header>
+
+  <div class="search-box">
+    <span class="search-icon" aria-hidden="true">⌕</span>
+
+    <input
+      id="searchInput"
+      type="search"
+      placeholder="What do you want to listen to?"
+      autocomplete="off"
+      aria-label="Search Resona"
+    >
+
+    <span class="search-shortcut">Explore music</span>
+
+    <button
+      id="clearSearch"
+      class="clear-search"
+      type="button"
+      aria-label="Clear search"
+    >×</button>
+  </div>
+
+  <div
+    id="searchSuggestions"
+    class="search-suggestions"
+    aria-label="Search suggestions"
+  ></div>
+
+  <nav class="search-filters" aria-label="Search categories">
+    <button class="filter-button active" data-filter="all" type="button">
+      All
+    </button>
+
+    <button class="filter-button" data-filter="tracks" type="button">
+      Songs
+    </button>
+
+    <button class="filter-button" data-filter="artists" type="button">
+      Artists
+    </button>
+
+    <button class="filter-button" data-filter="albums" type="button">
+      Albums
+    </button>
+  </nav>
+
+  <div id="searchStatus" class="search-status" aria-live="polite">
+    Start typing to discover music.
+  </div>
+
+  <div id="searchResults">
+
+    <div id="welcomeState" class="welcome-state">
+      <div class="state-icon">♫</div>
+      <h3>Discover something new</h3>
+      <p>
+        Search for your favourite songs, artists or albums.
+        Music discovery starts here.
+      </p>
+    </div>
+
+    <div id="loadingState" class="loading-state" hidden>
+      Loading the music catalogue...
+    </div>
+
+    <div id="errorState" class="error-state" hidden>
+      <div class="state-icon">!</div>
+      <h3>Something went wrong</h3>
+      <p id="errorMessage">
+        We couldn't load the music catalogue.
+      </p>
+      <button id="retryButton" class="retry-button" type="button">
+        Try again
+      </button>
+    </div>
+
+    <div id="emptyState" class="empty-state" hidden>
+      <div class="state-icon">⌕</div>
+      <h3>No results found</h3>
+      <p>Try another spelling or search for something different.</p>
+    </div>
+
+    <section id="tracksSection" class="results-section" hidden>
+      <div class="section-heading">
+        <h2>Songs</h2>
+        <span id="tracksCount" class="result-count"></span>
+      </div>
+      <div id="tracksGrid" class="result-grid"></div>
+    </section>
+
+    <section id="artistsSection" class="results-section" hidden>
+      <div class="section-heading">
+        <h2>Artists</h2>
+        <span id="artistsCount" class="result-count"></span>
+      </div>
+      <div id="artistsGrid" class="result-grid"></div>
+    </section>
+
+    <section id="albumsSection" class="results-section" hidden>
+      <div class="section-heading">
+        <h2>Albums</h2>
+        <span id="albumsCount" class="result-count"></span>
+      </div>
+      <div id="albumsGrid" class="result-grid"></div>
+    </section>
+
+  </div>
+
+</main>
+
+<div data-resona-mobile-nav></div>
+<div data-resona-footer></div>
+
+<script src="./js/navigation.js"></script>
+
+<script>
+(() => {
+  "use strict";
+
+  const API_BASE =
+    "https://resona-api.nearafrica-onyxtech.workers.dev";
+
+  const CATALOGUE_LIMIT = 100;
+  const MAX_DISPLAY_RESULTS = 60;
+  const DEBOUNCE_DELAY = 180;
+
+  const elements = {
+    input: document.getElementById("searchInput"),
+    clear: document.getElementById("clearSearch"),
+    suggestions: document.getElementById("searchSuggestions"),
+    status: document.getElementById("searchStatus"),
+
+    welcome: document.getElementById("welcomeState"),
+    loading: document.getElementById("loadingState"),
+    error: document.getElementById("errorState"),
+    errorMessage: document.getElementById("errorMessage"),
+    empty: document.getElementById("emptyState"),
+
+    tracksSection: document.getElementById("tracksSection"),
+    artistsSection: document.getElementById("artistsSection"),
+    albumsSection: document.getElementById("albumsSection"),
+
+    tracksGrid: document.getElementById("tracksGrid"),
+    artistsGrid: document.getElementById("artistsGrid"),
+    albumsGrid: document.getElementById("albumsGrid"),
+
+    tracksCount: document.getElementById("tracksCount"),
+    artistsCount: document.getElementById("artistsCount"),
+    albumsCount: document.getElementById("albumsCount"),
+
+    retry: document.getElementById("retryButton")
+  };
+
+  const state = {
+    tracks: [],
+    artists: [],
+    albums: [],
+    loaded: false,
+    loading: false,
+    error: null,
+    filter: "all",
+    query: "",
+    timer: null
+  };
+
+  function getText(value) {
+    if (value === null || value === undefined) return "";
+    return String(value).trim();
+  }
+
+  function firstValue(object, names) {
+    for (const name of names) {
+      const value = object && object[name];
+
+      if (value !== null && value !== undefined && value !== "") {
+        return value;
+      }
+    }
+
+    return "";
+  }
+
+  function getTrackTitle(track) {
+    return getText(firstValue(track, [
+      "title",
+      "name",
+      "track_title"
+    ]));
+  }
+
+  function getTrackArtist(track) {
+    return getText(firstValue(track, [
+      "artist_name",
+      "artist",
+      "display_name"
+    ]));
+  }
+
+  function getArtistName(artist) {
+    return getText(firstValue(artist, [
+      "artist_name",
+      "display_name",
+      "name",
+      "username"
+    ]));
+  }
+
+  function getAlbumTitle(album) {
+    return getText(firstValue(album, [
+      "title",
+      "album_title",
+      "name"
+    ]));
+  }
+
+  function getImage(item, names) {
+    const value = getText(firstValue(item, names));
+
+    if (!value) return "";
+
+    try {
+      const url = new URL(value, window.location.origin);
+
+      if (url.protocol !== "https:" && url.origin !== window.location.origin) {
+        return "";
+      }
+
+      if (url.protocol !== "https:" && url.protocol !== "http:") {
+        return "";
+      }
+
+      return url.href;
+    } catch {
+      return "";
+    }
+  }
+
+  function createImage(url, alt, className = "") {
+    const image = document.createElement("img");
+
+    image.className = "result-image " + className;
+    image.alt = alt;
+    image.loading = "lazy";
+    image.decoding = "async";
+
+    if (url) {
+      image.src = url;
+
+      image.addEventListener("error", () => {
+        image.removeAttribute("src");
+      }, { once: true });
+    }
+
+    return image;
+  }
+
+  function createCard({
+    title,
+    subtitle,
+    image,
+    type,
+    href,
+    roundImage = false
+  }) {
+    const link = document.createElement("a");
+
+    link.className = "result-card";
+    link.href = href;
+
+    const artwork = createImage(
+      image,
+      title,
+      roundImage ? "artist-image" : ""
+    );
+
+    const titleElement = document.createElement("div");
+    titleElement.className = "result-title";
+    titleElement.textContent = title || "Untitled";
+
+    const subtitleElement = document.createElement("div");
+    subtitleElement.className = "result-subtitle";
+    subtitleElement.textContent = subtitle || "";
+
+    const typeElement = document.createElement("span");
+    typeElement.className = "result-type";
+    typeElement.textContent = type;
+
+    link.append(
+      artwork,
+      titleElement,
+      subtitleElement,
+      typeElement
+    );
+
+    return link;
+  }
+
+  async function fetchCatalogue(endpoint) {
+    const url = new URL(API_BASE + endpoint);
+
+    url.searchParams.set("limit", String(CATALOGUE_LIMIT));
+    url.searchParams.set("offset", "0");
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        "Accept": "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        "Catalogue request failed: " + endpoint +
+        " (HTTP " + response.status + ")"
+      );
+    }
+
+    const result = await response.json();
+
+    if (!result || result.success !== true) {
+      throw new Error(
+        "The catalogue returned an unsuccessful response: " + endpoint
+      );
+    }
+
+    if (!Array.isArray(result.data)) {
+      throw new Error(
+        "Unexpected catalogue response format: " + endpoint
+      );
+    }
+
+    return result.data;
+  }
+
+  async function loadCatalogue(force = false) {
+    if (state.loading) return;
+
+    if (state.loaded && !force) return;
+
+    state.loading = true;
+    state.error = null;
+
+    showLoading();
+
+    try {
+      const [tracks, artists, albums] = await Promise.all([
+        fetchCatalogue("/tracks"),
+        fetchCatalogue("/artists"),
+        fetchCatalogue("/albums")
+      ]);
+
+      state.tracks = tracks;
+      state.artists = artists;
+      state.albums = albums;
+
+      state.loaded = true;
+      state.loading = false;
+
+      elements.error.hidden = true;
+
+      if (state.query) {
+        performSearch(state.query);
+      } else {
+        showWelcome();
+      }
+
+    } catch (error) {
+      console.error("[Resona Search]", error);
+
+      state.loading = false;
+      state.loaded = false;
+      state.error = error;
+
+      elements.loading.hidden = true;
+      elements.welcome.hidden = true;
+      elements.empty.hidden = true;
+
+      hideSections();
+
+      elements.error.hidden = false;
+      elements.errorMessage.textContent =
+        "We couldn't load the catalogue. Check your connection and try again.";
+
+      elements.status.textContent = "Catalogue unavailable.";
+    }
+  }
+
+  function showLoading() {
+    elements.welcome.hidden = true;
+    elements.error.hidden = true;
+    elements.empty.hidden = true;
+
+    hideSections();
+
+    elements.loading.hidden = false;
+    elements.status.textContent = "Loading music...";
+  }
+
+  function showWelcome() {
+    elements.loading.hidden = true;
+    elements.error.hidden = true;
+    elements.empty.hidden = true;
+
+    hideSections();
+
+    elements.welcome.hidden = false;
+    elements.status.textContent = "Start typing to discover music.";
+  }
+
+  function hideSections() {
+    elements.tracksSection.hidden = true;
+    elements.artistsSection.hidden = true;
+    elements.albumsSection.hidden = true;
+  }
+
+  function normalize(value) {
+    return getText(value).toLowerCase();
+  }
+
+  function matchesSearch(values, query) {
+    const searchable = values
+      .map(normalize)
+      .filter(Boolean)
+      .join(" ");
+
+    return searchable.includes(query);
+  }
+
+  function searchTracks(query) {
+    return state.tracks.filter(track => {
+      return matchesSearch([
+        getTrackTitle(track),
+        getTrackArtist(track),
+        firstValue(track, ["album_title", "album_name"]),
+        firstValue(track, ["genre", "genre_name"]),
+        firstValue(track, ["country_code", "country_name"])
+      ], query);
+    });
+  }
+
+  function searchArtists(query) {
+    return state.artists.filter(artist => {
+      return matchesSearch([
+        getArtistName(artist),
+        firstValue(artist, ["username"]),
+        firstValue(artist, ["country_code", "country_name"]),
+        firstValue(artist, ["bio", "description"])
+      ], query);
+    });
+  }
+
+  function searchAlbums(query) {
+    return state.albums.filter(album => {
+      return matchesSearch([
+        getAlbumTitle(album),
+        firstValue(album, ["artist_name", "artist"]),
+        firstValue(album, ["genre", "genre_name"]),
+        firstValue(album, ["country_code", "country_name"])
+      ], query);
+    });
+  }
+
+  function renderTracks(items) {
+    elements.tracksGrid.replaceChildren();
+
+    const visible = items.slice(0, MAX_DISPLAY_RESULTS);
+
+    visible.forEach(track => {
+      const id = getText(firstValue(track, [
+        "id",
+        "track_id"
+      ]));
+
+      if (!id) return;
+
+      const title = getTrackTitle(track) || "Untitled song";
+      const artist = getTrackArtist(track) || "Unknown artist";
+
+      const artwork = getImage(track, [
+        "artwork_url",
+        "album_artwork_url",
+        "cover_url",
+        "image_url"
+      ]);
+
+      const card = createCard({
+        title,
+        subtitle: artist,
+        image: artwork,
+        type: "Song",
+        href: "./player.html?id=" + encodeURIComponent(id)
+      });
+
+      elements.tracksGrid.appendChild(card);
+    });
+
+    elements.tracksCount.textContent =
+      items.length + (items.length === 1 ? " result" : " results");
+
+    elements.tracksSection.hidden = visible.length === 0;
+  }
+
+  function renderArtists(items) {
+    elements.artistsGrid.replaceChildren();
+
+    const visible = items.slice(0, MAX_DISPLAY_RESULTS);
+
+    visible.forEach(artist => {
+      const id = getText(firstValue(artist, [
+        "id",
+        "artist_id"
+      ]));
+
+      if (!id) return;
+
+      const name = getArtistName(artist) || "Unknown artist";
+
+      const image = getImage(artist, [
+        "profile_image_url",
+        "avatar_url",
+        "image_url",
+        "artwork_url"
+      ]);
+
+      const card = createCard({
+        title: name,
+        subtitle: firstValue(artist, [
+          "country_name",
+          "country_code"
+        ]) || "Artist",
+        image,
+        type: "Artist",
+        href: "./artist.html?id=" + encodeURIComponent(id),
+        roundImage: true
+      });
+
+      elements.artistsGrid.appendChild(card);
+    });
+
+    elements.artistsCount.textContent =
+      items.length + (items.length === 1 ? " result" : " results");
+
+    elements.artistsSection.hidden = visible.length === 0;
+  }
+
+  function renderAlbums(items) {
+    elements.albumsGrid.replaceChildren();
+
+    const visible = items.slice(0, MAX_DISPLAY_RESULTS);
+
+    visible.forEach(album => {
+      const id = getText(firstValue(album, [
+        "id",
+        "album_id"
+      ]));
+
+      if (!id) return;
+
+      const title = getAlbumTitle(album) || "Untitled album";
+
+      const artist = getText(firstValue(album, [
+        "artist_name",
+        "artist"
+      ])) || "Unknown artist";
+
+      const image = getImage(album, [
+        "artwork_url",
+        "cover_url",
+        "image_url"
+      ]);
+
+      const card = createCard({
+        title,
+        subtitle: artist,
+        image,
+        type: "Album",
+        href: "./album.html?id=" + encodeURIComponent(id)
+      });
+
+      elements.albumsGrid.appendChild(card);
+    });
+
+    elements.albumsCount.textContent =
+      items.length + (items.length === 1 ? " result" : " results");
+
+    elements.albumsSection.hidden = visible.length === 0;
+  }
+
+  function performSearch(rawQuery) {
+    const query = normalize(rawQuery);
+
+    state.query = rawQuery;
+
+    elements.loading.hidden = true;
+    elements.error.hidden = true;
+    elements.welcome.hidden = true;
+
+    if (!query) {
+      elements.empty.hidden = true;
+      elements.suggestions.classList.remove("visible");
+      showWelcome();
+      return;
+    }
+
+    if (!state.loaded) {
+      loadCatalogue();
+      return;
+    }
+
+    const tracks = searchTracks(query);
+    const artists = searchArtists(query);
+    const albums = searchAlbums(query);
+
+    const showTracks =
+      state.filter === "all" || state.filter === "tracks";
+
+    const showArtists =
+      state.filter === "all" || state.filter === "artists";
+
+    const showAlbums =
+      state.filter === "all" || state.filter === "albums";
+
+    const filteredTracks = showTracks ? tracks : [];
+    const filteredArtists = showArtists ? artists : [];
+    const filteredAlbums = showAlbums ? albums : [];
+
+    renderTracks(filteredTracks);
+    renderArtists(filteredArtists);
+    renderAlbums(filteredAlbums);
+
+    const total =
+      filteredTracks.length +
+      filteredArtists.length +
+      filteredAlbums.length;
+
+    elements.empty.hidden = total > 0;
+
+    elements.status.textContent =
+      total + (total === 1 ? " result found" : " results found") +
+      ' for "' + rawQuery.trim() + '"';
+
+    if (total === 0) {
+      hideSections();
+    }
+  }
+
+  function updateSuggestions(query) {
+    elements.suggestions.replaceChildren();
+
+    if (!query || query.length < 2 || !state.loaded) {
+      elements.suggestions.classList.remove("visible");
+      return;
+    }
+
+    const suggestions = [];
+
+    for (const track of searchTracks(query).slice(0, 3)) {
+      suggestions.push({
+        title: getTrackTitle(track),
+        type: "Song"
+      });
+    }
+
+    for (const artist of searchArtists(query).slice(0, 2)) {
+      suggestions.push({
+        title: getArtistName(artist),
+        type: "Artist"
+      });
+    }
+
+    for (const album of searchAlbums(query).slice(0, 2)) {
+      suggestions.push({
+        title: getAlbumTitle(album),
+        type: "Album"
+      });
+    }
+
+    if (!suggestions.length) {
+      elements.suggestions.classList.remove("visible");
+      return;
+    }
+
+    const label = document.createElement("div");
+    label.className = "suggestion-label";
+    label.textContent = "Suggestions";
+
+    elements.suggestions.appendChild(label);
+
+    suggestions.slice(0, 6).forEach(item => {
+      if (!item.title) return;
+
+      const button = document.createElement("button");
+
+      button.type = "button";
+      button.className = "suggestion-item";
+
+      const icon = document.createElement("span");
+      icon.textContent =
+        item.type === "Song" ? "♫" :
+        item.type === "Artist" ? "♙" : "▣";
+
+      const title = document.createElement("span");
+      title.textContent = item.title;
+
+      const type = document.createElement("span");
+      type.textContent = item.type;
+
+      button.append(icon, title, type);
+
+      button.addEventListener("click", () => {
+        elements.input.value = item.title;
+        elements.suggestions.classList.remove("visible");
+        elements.clear.classList.add("visible");
+        performSearch(item.title);
+      });
+
+      elements.suggestions.appendChild(button);
+    });
+
+    elements.suggestions.classList.add("visible");
+  }
+
+  elements.input.addEventListener("input", () => {
+    const value = elements.input.value.trim();
+
+    elements.clear.classList.toggle("visible", Boolean(value));
+
+    clearTimeout(state.timer);
+
+    if (!value) {
+      state.query = "";
+      elements.suggestions.classList.remove("visible");
+      showWelcome();
+      return;
+    }
+
+    state.timer = setTimeout(() => {
+      if (state.loaded) {
+        performSearch(value);
+        updateSuggestions(normalize(value));
+      } else {
+        loadCatalogue();
+      }
+    }, DEBOUNCE_DELAY);
+  });
+
+  elements.input.addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      clearTimeout(state.timer);
+
+      const value = elements.input.value.trim();
+
+      elements.suggestions.classList.remove("visible");
+
+      if (value) {
+        if (state.loaded) {
+          performSearch(value);
+        } else {
+          state.query = value;
+          loadCatalogue();
+        }
+      }
+    }
+
+    if (event.key === "Escape") {
+      elements.suggestions.classList.remove("visible");
+    }
+  });
+
+  elements.clear.addEventListener("click", () => {
+    elements.input.value = "";
+    elements.clear.classList.remove("visible");
+    elements.suggestions.classList.remove("visible");
+
+    state.query = "";
+
+    showWelcome();
+    elements.input.focus();
+  });
+
+  document.querySelectorAll(".filter-button").forEach(button => {
+    button.addEventListener("click", () => {
+      document.querySelectorAll(".filter-button").forEach(item => {
+        item.classList.remove("active");
+      });
+
+      button.classList.add("active");
+
+      state.filter = button.dataset.filter;
+
+      if (state.query && state.loaded) {
+        performSearch(state.query);
+      }
+    });
+  });
+
+  elements.retry.addEventListener("click", () => {
+    loadCatalogue(true);
+  });
+
+  // Load the catalogue when the page opens.
+  loadCatalogue();
+
+})();
+</script>
+
+</body>
+  </html>
