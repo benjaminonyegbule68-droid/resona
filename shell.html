@@ -1,23 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#090811">
-
-<title>Resona | Music Without Borders</title>
+<title>Resona</title>
 
 <style>
 :root {
   --bg: #090811;
-  --panel: #151220;
-  --panel2: #1d192b;
+  --panel: #151321;
+  --panel-light: #201c30;
   --border: rgba(255,255,255,.09);
-  --text: #f5f1ff;
-  --muted: #a29ab5;
-  --purple: #a78bfa;
-  --teal: #45dfc2;
+  --text: #f6f3ff;
+  --muted: #9993ad;
+  --purple: #9b70ff;
+  --teal: #48d8c1;
+  --danger: #ff6b7a;
 }
 
 * {
@@ -26,37 +25,30 @@
 
 html,
 body {
-  margin: 0;
   width: 100%;
   height: 100%;
+  margin: 0;
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-button,
-input {
-  font: inherit;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
 }
 
 button {
-  -webkit-tap-highlight-color: transparent;
+  font: inherit;
 }
 
-/* APPLICATION */
-
-#resonaApp {
+#resona-shell {
   width: 100%;
   height: 100%;
-  height: 100dvh;
   display: flex;
   flex-direction: column;
   position: relative;
-  overflow: hidden;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(155,112,255,.10), transparent 35%),
+    var(--bg);
 }
-
-/* PAGE FRAME */
 
 #pageFrame {
   width: 100%;
@@ -66,42 +58,50 @@ button {
   background: var(--bg);
 }
 
-/* MINI PLAYER */
+/* Persistent player */
 
-#miniPlayer {
+#shell-player {
   position: relative;
+  z-index: 20;
+  flex-shrink: 0;
   width: 100%;
-  min-height: 78px;
-  padding: 11px 18px;
-  padding-bottom: max(11px, env(safe-area-inset-bottom));
-  background: rgba(17,14,27,.98);
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: rgba(18,16,29,.97);
   border-top: 1px solid var(--border);
+  backdrop-filter: blur(20px);
+}
+
+.player-main {
   display: flex;
   align-items: center;
-  gap: 15px;
-  z-index: 20;
+  gap: 12px;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
-/* ARTWORK */
-
-#miniArtwork {
-  width: 49px;
-  height: 49px;
-  border-radius: 9px;
-  object-fit: cover;
-  background: #292334;
+.artwork {
+  width: 48px;
+  height: 48px;
   flex-shrink: 0;
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--panel-light);
+  display: grid;
+  place-items: center;
 }
 
-/* TRACK INFORMATION */
+.artwork img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 
-#miniTrackInfo {
-  flex: 1;
+.track-information {
   min-width: 0;
+  flex: 1;
 }
 
-#miniTrackTitle {
-  display: block;
+.track-title {
   font-size: 13px;
   font-weight: 700;
   overflow: hidden;
@@ -109,207 +109,203 @@ button {
   text-overflow: ellipsis;
 }
 
-#miniArtist {
-  display: block;
+.track-artist {
+  margin-top: 4px;
   font-size: 11px;
   color: var(--muted);
-  margin-top: 5px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-/* CONTROLS */
-
-#miniControls {
+.player-controls {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
+  gap: 8px;
 }
 
-.playerButton {
+.control-button {
   width: 36px;
   height: 36px;
+  display: grid;
+  place-items: center;
   border: 0;
   border-radius: 50%;
   background: transparent;
   color: var(--text);
   cursor: pointer;
   font-size: 17px;
-  display: grid;
-  place-items: center;
 }
 
-.playerButton:active {
-  transform: scale(.92);
+.control-button:hover {
+  background: rgba(255,255,255,.09);
 }
 
-#shellPlayButton {
-  width: 43px;
-  height: 43px;
-  color: #090811;
-  background: linear-gradient(135deg,var(--purple),var(--teal));
-  font-size: 18px;
-  font-weight: bold;
-}
-
-/* EXTRA PLAYER CONTROLS */
-
-#miniExtraControls {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-#shellShuffleButton,
-#shellRepeatButton {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-#shellShuffleButton.active,
-#shellRepeatButton.active {
+.control-button.active {
   color: var(--teal);
 }
 
-/* PROGRESS */
+#shellPlayButton {
+  width: 42px;
+  height: 42px;
+  background: var(--text);
+  color: #171321;
+  font-size: 19px;
+}
+
+#shellPlayButton:hover {
+  background: var(--teal);
+}
+
+.progress-row {
+  max-width: 1200px;
+  margin: 9px auto 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.time-label {
+  min-width: 33px;
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 
 #miniProgress {
-  position: absolute;
-  top: -2px;
-  left: 0;
   width: 100%;
-  height: 3px;
-  margin: 0;
+  height: 4px;
   appearance: none;
-  -webkit-appearance: none;
-  background: rgba(255,255,255,.12);
+  border: 0;
+  border-radius: 20px;
+  outline: none;
+  background: rgba(255,255,255,.15);
   cursor: pointer;
 }
 
 #miniProgress::-webkit-slider-thumb {
   appearance: none;
-  -webkit-appearance: none;
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--teal);
 }
 
 #miniProgress::-moz-range-thumb {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border: 0;
   border-radius: 50%;
   background: var(--teal);
 }
 
-/* AUDIO */
-
-#resonaAudio {
-  display: none;
+.extra-controls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
 }
 
-/* LOADING SCREEN */
+.extra-controls .control-button {
+  width: 31px;
+  height: 31px;
+  font-size: 14px;
+}
 
-#loadingScreen {
+#shellMessage {
+  position: fixed;
+  z-index: 100;
+  left: 50%;
+  bottom: 105px;
+  transform: translateX(-50%) translateY(10px);
+  max-width: calc(100% - 32px);
+  padding: 11px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #211d30;
+  color: var(--text);
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: .2s ease;
+  text-align: center;
+}
+
+#shellMessage.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+#shellLoading {
   position: absolute;
   inset: 0;
-  z-index: 100;
+  z-index: 10;
+  display: grid;
+  place-items: center;
   background: var(--bg);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 13px;
-  transition: opacity .3s;
+  transition: opacity .3s ease;
   pointer-events: none;
 }
 
-#loadingScreen.hidden {
+#shellLoading.hidden {
   opacity: 0;
   visibility: hidden;
 }
 
-.logo {
-  font-size: 36px;
-  font-weight: 900;
-  letter-spacing: 5px;
-  background: linear-gradient(120deg,var(--purple),var(--teal));
+.loading-content {
+  text-align: center;
+}
+
+.loading-logo {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -2px;
+  background: linear-gradient(120deg, var(--purple), var(--teal));
+  color: transparent;
   background-clip: text;
   -webkit-background-clip: text;
-  color: transparent;
 }
 
-#loadingScreen p {
-  color: var(--muted);
+.loading-text {
+  margin-top: 10px;
   font-size: 12px;
+  color: var(--muted);
 }
 
-.loader {
-  width: 27px;
-  height: 27px;
-  border: 3px solid rgba(255,255,255,.1);
+.loading-spinner {
+  width: 22px;
+  height: 22px;
+  margin: 20px auto 0;
+  border: 2px solid rgba(255,255,255,.12);
   border-top-color: var(--teal);
   border-radius: 50%;
-  animation: rotate .8s linear infinite;
+  animation: spin .8s linear infinite;
 }
 
-@keyframes rotate {
-  to {
-    transform: rotate(360deg);
-  }
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
-/* PLAYER MESSAGE */
-
-#playerMessage {
-  position: absolute;
-  bottom: 92px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #292139;
-  color: white;
-  border: 1px solid var(--border);
-  border-radius: 25px;
-  padding: 10px 16px;
-  font-size: 12px;
-  max-width: 90%;
-  text-align: center;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .2s;
-  z-index: 40;
-}
-
-#playerMessage.show {
-  opacity: 1;
-}
-
-/* MOBILE */
-
-@media(max-width:600px) {
-  #miniPlayer {
-    gap: 9px;
+@media (max-width: 520px) {
+  #shell-player {
     padding-left: 11px;
     padding-right: 11px;
   }
 
-  #miniArtwork {
+  .player-main {
+    gap: 9px;
+  }
+
+  .artwork {
     width: 43px;
     height: 43px;
   }
 
-  #miniTrackTitle {
-    font-size: 12px;
+  .player-controls {
+    gap: 2px;
   }
 
-  #miniControls {
-    gap: 3px;
-  }
-
-  .playerButton {
+  .control-button {
     width: 32px;
     height: 32px;
   }
@@ -319,25 +315,8 @@ button {
     height: 39px;
   }
 
-  #miniExtraControls {
+  .extra-controls {
     display: none;
-  }
-}
-
-@media(max-width:360px) {
-  #miniPlayer {
-    gap: 7px;
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-
-  #miniArtwork {
-    width: 39px;
-    height: 39px;
-  }
-
-  #miniArtist {
-    font-size: 10px;
   }
 }
 </style>
@@ -345,1572 +324,1043 @@ button {
 
 <body>
 
-<div id="resonaApp">
-
-  <!-- PAGE DISPLAY -->
+<div id="resona-shell">
 
   <iframe
     id="pageFrame"
-    title="Resona pages"
-    src="index.html"
-    allow="autoplay; encrypted-media"
-  ></iframe>
+    src="./index.html"
+    title="Resona Music"
+    allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+    referrerpolicy="same-origin">
+  </iframe>
 
-  <!-- PERSISTENT PLAYER -->
-
-  <div id="miniPlayer">
-
-    <input
-      type="range"
-      id="miniProgress"
-      min="0"
-      max="1000"
-      value="0"
-      aria-label="Playback progress"
-    >
-
-    <img
-      id="miniArtwork"
-      alt="Album artwork"
-    >
-
-    <div id="miniTrackInfo">
-
-      <span id="miniTrackTitle">
-        Nothing playing
-      </span>
-
-      <span id="miniArtist">
-        Discover music on Resona
-      </span>
-
+  <div id="shellLoading">
+    <div class="loading-content">
+      <div class="loading-logo">resona.</div>
+      <div class="loading-text">Preparing your music experience</div>
+      <div class="loading-spinner"></div>
     </div>
-
-    <div id="miniExtraControls">
-
-      <button
-        class="playerButton"
-        id="shellShuffleButton"
-        aria-label="Shuffle"
-        title="Shuffle"
-      >⤨</button>
-
-      <button
-        class="playerButton"
-        id="shellRepeatButton"
-        aria-label="Repeat off"
-        title="Repeat off"
-      >↻</button>
-
-    </div>
-
-    <div id="miniControls">
-
-      <button
-        class="playerButton"
-        id="shellPreviousButton"
-        aria-label="Previous track"
-      >⏮</button>
-
-      <button
-        class="playerButton"
-        id="shellPlayButton"
-        aria-label="Play"
-      >▶</button>
-
-      <button
-        class="playerButton"
-        id="shellNextButton"
-        aria-label="Next track"
-      >⏭</button>
-
-    </div>
-
   </div>
 
-  <div id="playerMessage" role="status"></div>
+  <section id="shell-player" aria-label="Persistent music player">
 
-  <div id="loadingScreen">
+    <div class="player-main">
 
-    <div class="logo">RESONA</div>
+      <div class="artwork" id="miniArtwork">
+        <span>♫</span>
+      </div>
 
-    <div class="loader"></div>
+      <div class="track-information">
+        <div class="track-title" id="miniTrackTitle">
+          Nothing playing
+        </div>
+        <div class="track-artist" id="miniArtist">
+          Choose something to listen to
+        </div>
+      </div>
 
-    <p>Preparing your music experience...</p>
+      <div class="player-controls">
 
-  </div>
+        <button
+          class="control-button"
+          id="shellPreviousButton"
+          type="button"
+          aria-label="Previous track">
+          &#9198;
+        </button>
+
+        <button
+          class="control-button"
+          id="shellPlayButton"
+          type="button"
+          aria-label="Play">
+          &#9654;
+        </button>
+
+        <button
+          class="control-button"
+          id="shellNextButton"
+          type="button"
+          aria-label="Next track">
+          &#9197;
+        </button>
+
+      </div>
+
+      <div class="extra-controls">
+
+        <button
+          class="control-button"
+          id="shellShuffleButton"
+          type="button"
+          aria-label="Shuffle">
+          &#8645;
+        </button>
+
+        <button
+          class="control-button"
+          id="shellRepeatButton"
+          type="button"
+          aria-label="Repeat">
+          &#8635;
+        </button>
+
+      </div>
+
+    </div>
+
+    <div class="progress-row">
+      <span class="time-label" id="shellCurrentTime">0:00</span>
+
+      <input
+        type="range"
+        id="miniProgress"
+        min="0"
+        max="100"
+        value="0"
+        step="0.1"
+        aria-label="Playback progress">
+
+      <span class="time-label" id="shellDuration">0:00</span>
+    </div>
+
+  </section>
+
+  <div id="shellMessage" role="status" aria-live="polite"></div>
 
 </div>
 
-<!-- THE SINGLE PERSISTENT AUDIO ELEMENT -->
-
-<audio
-  id="resonaAudio"
-  preload="metadata"
-></audio>
-
+<audio id="resonaAudio" preload="metadata"></audio>
 
 <script>
 (() => {
+  "use strict";
 
-"use strict";
+  /*
+   * Resona persistent player shell.
+   *
+   * Engine version: 2.1.0
+   * Bridge protocol: 1.0.0
+   */
 
-/* =====================================================
-   RESONA SHARED APPLICATION ENGINE
-   Version: 2.0.0
-===================================================== */
+  const ENGINE_VERSION = "2.1.0";
+  const PROTOCOL_VERSION = "1.0.0";
 
-const VERSION = "2.0.0";
+  const SHELL_SOURCE = "resona-shell";
+  const PAGE_SOURCE = "resona-page";
 
-const audio = document.getElementById("resonaAudio");
-const frame = document.getElementById("pageFrame");
+  const frame = document.getElementById("pageFrame");
+  const audio = document.getElementById("resonaAudio");
 
-const SHELL_SOURCE = "resona-shell";
-const PAGE_SOURCE = "resona-page";
-
-const state = {
-  currentTrack: null,
-  queue: [],
-  currentIndex: -1,
-  shuffle: false,
-  repeat: "off",
-  isPlaying: false,
-  volume: 1,
-  muted: false,
-  currentTime: 0,
-  duration: 0,
-  ready: false
-};
-
-const FALLBACK_ART =
-  "data:image/svg+xml;charset=UTF-8," +
-  encodeURIComponent(`
-    <svg xmlns="http://www.w3.org/2000/svg"
-         width="300" height="300">
-      <rect width="100%" height="100%" fill="#211a35"/>
-      <text x="50%" y="55%" fill="#a78bfa"
-        font-size="90" text-anchor="middle"
-        font-family="Arial">R</text>
-    </svg>
-  `);
-
-const ALLOWED_PAGES = [
-  "index.html",
-  "explore.html",
-  "search.html",
-  "artist.html",
-  "album.html",
-  "player.html",
-  "lyrics.html",
-  "library.html",
-  "playlists.html",
-  "downloads.html",
-  "profile.html",
-  "settings.html",
-  "login.html",
-  "register.html",
-  "forgot-password.html",
-  "artist-dashboard.html",
-  "upload.html"
-];
-
-/* =====================================================
-   ELEMENTS
-===================================================== */
-
-const elements = {
-  artwork: document.getElementById("miniArtwork"),
-  title: document.getElementById("miniTrackTitle"),
-  artist: document.getElementById("miniArtist"),
-  play: document.getElementById("shellPlayButton"),
-  previous: document.getElementById("shellPreviousButton"),
-  next: document.getElementById("shellNextButton"),
-  progress: document.getElementById("miniProgress"),
-  message: document.getElementById("playerMessage"),
-  loading: document.getElementById("loadingScreen"),
-  shuffle: document.getElementById("shellShuffleButton"),
-  repeat: document.getElementById("shellRepeatButton")
-};
-
-/* =====================================================
-   UTILITIES
-===================================================== */
-
-function notify(message) {
-
-  elements.message.textContent = message;
-
-  elements.message.classList.add("show");
-
-  clearTimeout(notify.timer);
-
-  notify.timer = setTimeout(() => {
-    elements.message.classList.remove("show");
-  }, 2800);
-
-}
-
-function getTrackId(track) {
-
-  return String(
-    track?.id ||
-    track?.track_id ||
-    ""
-  ).trim();
-
-}
-
-function getTrackTitle(track) {
-
-  return (
-    track?.title ||
-    track?.name ||
-    "Untitled track"
-  );
-
-}
-
-function getArtistName(track) {
-
-  return (
-    track?.artist_name ||
-    track?.artist ||
-    "Unknown artist"
-  );
-
-}
-
-function getArtwork(track) {
-
-  const url =
-    track?.artwork_url ||
-    track?.album_artwork_url ||
-    track?.cover_url ||
-    track?.image_url ||
-    "";
-
-  if (!url) return FALLBACK_ART;
-
-  try {
-
-    const parsed = new URL(url, location.href);
-
-    if (
-      parsed.protocol !== "https:" &&
-      parsed.origin !== location.origin
-    ) {
-      return FALLBACK_ART;
-    }
-
-    return parsed.href;
-
-  } catch {
-    return FALLBACK_ART;
-  }
-
-}
-
-function getAudioUrl(track) {
-
-  return (
-    track?.audio_url ||
-    track?.stream_url ||
-    track?.file_url ||
-    track?.audioUrl ||
-    ""
-  );
-
-}
-
-function validateTrack(track) {
-
-  if (!track || typeof track !== "object") {
-    throw new Error("Invalid track information.");
-  }
-
-  if (!getTrackId(track)) {
-    throw new Error("Track ID is missing.");
-  }
-
-  if (!getAudioUrl(track)) {
-    throw new Error("This track has no available audio file.");
-  }
-
-  return track;
-
-}
-
-/* =====================================================
-   PLAYER DISPLAY
-===================================================== */
-
-function updateDisplay(track) {
-
-  state.currentTrack = track || null;
-
-  if (!track) {
-
-    elements.title.textContent = "Nothing playing";
-    elements.artist.textContent = "Discover music on Resona";
-    elements.artwork.src = FALLBACK_ART;
-
-    return;
-
-  }
-
-  elements.title.textContent = getTrackTitle(track);
-
-  elements.artist.textContent = getArtistName(track);
-
-  elements.artwork.src = getArtwork(track);
-
-  elements.artwork.onerror = () => {
-    elements.artwork.src = FALLBACK_ART;
+  const elements = {
+    artwork: document.getElementById("miniArtwork"),
+    title: document.getElementById("miniTrackTitle"),
+    artist: document.getElementById("miniArtist"),
+    play: document.getElementById("shellPlayButton"),
+    previous: document.getElementById("shellPreviousButton"),
+    next: document.getElementById("shellNextButton"),
+    shuffle: document.getElementById("shellShuffleButton"),
+    repeat: document.getElementById("shellRepeatButton"),
+    progress: document.getElementById("miniProgress"),
+    currentTime: document.getElementById("shellCurrentTime"),
+    duration: document.getElementById("shellDuration"),
+    message: document.getElementById("shellMessage"),
+    loading: document.getElementById("shellLoading")
   };
 
-  updateMediaSession();
-
-}
-
-/* =====================================================
-   PLAYER STATE
-===================================================== */
-
-function getState() {
-
-  state.isPlaying = !audio.paused;
-  state.currentTime = audio.currentTime || 0;
-  state.duration = Number.isFinite(audio.duration)
-    ? audio.duration
-    : 0;
-
-  state.volume = audio.volume;
-  state.muted = audio.muted;
-
-  return {
-    ready: state.ready,
-    currentTrack: state.currentTrack,
-    queue: state.queue,
-    currentIndex: state.currentIndex,
-    shuffle: state.shuffle,
-    repeat: state.repeat,
-    isPlaying: state.isPlaying,
-    currentTime: state.currentTime,
-    duration: state.duration,
-    volume: state.volume,
-    muted: state.muted
+  const state = {
+    ready: false,
+    playing: false,
+    currentTrack: null,
+    queue: [],
+    currentIndex: -1,
+    shuffle: false,
+    repeat: "off",
+    currentTime: 0,
+    duration: 0,
+    volume: 1,
+    muted: false
   };
 
-}
+  let messageTimer = null;
+  let lastProgressUpdate = 0;
 
-/* =====================================================
-   MESSAGE COMMUNICATION
-===================================================== */
+  function createId() {
+    return "resona_" +
+      Date.now().toString(36) +
+      Math.random().toString(36).slice(2, 9);
+  }
 
-function sendToPage(action, payload, requestId) {
+  function safeString(value) {
+    return String(value ?? "").trim();
+  }
 
-  if (!frame.contentWindow) return;
+  function getTrackId(track) {
+    if (!track || typeof track !== "object") return "";
 
-  try {
-
-    frame.contentWindow.postMessage({
-
-      source: SHELL_SOURCE,
-      version: VERSION,
-      action: action,
-      requestId: requestId || null,
-      payload: payload || {}
-
-    }, location.origin);
-
-  } catch (error) {
-
-    console.error(
-      "[Resona Shell] Message error:",
-      error
+    return safeString(
+      track.id ||
+      track.track_id ||
+      track.trackId ||
+      track.uuid
     );
-
   }
 
-}
+  function getAudioUrl(track) {
+    if (!track || typeof track !== "object") return "";
 
-function broadcast(action, payload) {
+    return safeString(
+      track.audio_url ||
+      track.stream_url ||
+      track.file_url ||
+      track.audioUrl
+    );
+  }
 
-  sendToPage(action, payload);
+  function getArtwork(track) {
+    if (!track || typeof track !== "object") return "";
 
-}
+    return safeString(
+      track.artwork_url ||
+      track.album_artwork_url ||
+      track.cover_url ||
+      track.cover_art_url ||
+      track.image_url ||
+      track.image
+    );
+  }
 
-function sendPlayerState() {
+  function formatTime(seconds) {
+    const value = Number(seconds);
 
-  broadcast("PLAYER_STATE", getState());
-
-}
-
-function respond(event, message, payload) {
-
-  if (!message.requestId) return;
-
-  event.source.postMessage({
-
-    source: SHELL_SOURCE,
-    version: VERSION,
-    action: message.action,
-    requestId: message.requestId,
-    payload: payload || {
-      success: true
+    if (!Number.isFinite(value) || value < 0) {
+      return "0:00";
     }
 
-  }, event.origin);
+    const minutes = Math.floor(value / 60);
+    const remaining = Math.floor(value % 60);
 
-}
-
-/* =====================================================
-   TRACK PLAYBACK
-===================================================== */
-
-async function playTrack(track, index) {
-
-  try {
-
-    validateTrack(track);
-
-  } catch (error) {
-
-    notify(error.message);
-
-    return {
-      success: false,
-      error: error.message
-    };
-
+    return minutes + ":" + String(remaining).padStart(2, "0");
   }
 
-  const audioUrl = getAudioUrl(track);
+  function showMessage(message) {
+    elements.message.textContent = safeString(message);
+    elements.message.classList.add("visible");
 
-  let parsed;
+    clearTimeout(messageTimer);
 
-  try {
-
-    parsed = new URL(audioUrl, location.href);
-
-    if (
-      parsed.protocol !== "https:" &&
-      parsed.origin !== location.origin
-    ) {
-      throw new Error("Unsupported audio address.");
-    }
-
-  } catch {
-
-    notify("Invalid audio file address.");
-
-    return {
-      success: false,
-      error: "Invalid audio file address."
-    };
-
+    messageTimer = setTimeout(() => {
+      elements.message.classList.remove("visible");
+    }, 3000);
   }
 
-  if (Number.isInteger(index)) {
-    state.currentIndex = index;
-  }
-
-  updateDisplay(track);
-
-  audio.pause();
-
-  audio.src = parsed.href;
-
-  audio.load();
-
-  try {
-
-    await audio.play();
-
-    state.isPlaying = true;
-
-    updateControls();
-
-    updateMediaSession();
-
-    sendPlayerState();
-
-    broadcast("TRACK_CHANGED", {
-      track: track
-    });
-
-    return {
-      success: true
-    };
-
-  } catch (error) {
-
-    state.isPlaying = false;
-
-    updateControls();
-
-    if (error.name === "NotAllowedError") {
-
-      notify("Tap play to start listening.");
-
-    } else {
-
-      notify("Unable to play this track.");
-
-    }
-
-    return {
-      success: false,
-      error: error.message
-    };
-
-  }
-
-}
-
-/* =====================================================
-   PLAY TRACK WITH QUEUE
-===================================================== */
-
-async function playTrackWithQueue(track, queue) {
-
-  if (!Array.isArray(queue)) {
-    queue = [];
-  }
-
-  const trackId = getTrackId(track);
-
-  state.queue = queue.filter(item => {
-    return getTrackId(item);
-  });
-
-  let index = state.queue.findIndex(item => {
-    return getTrackId(item) === trackId;
-  });
-
-  if (index < 0) {
-
-    state.queue.unshift(track);
-
-    index = 0;
-
-  }
-
-  return playTrack(state.queue[index], index);
-
-}
-
-/* =====================================================
-   QUEUE MANAGEMENT
-===================================================== */
-
-async function setQueue(tracks, startTrackId) {
-
-  if (!Array.isArray(tracks) || !tracks.length) {
-
-    return {
-      success: false,
-      error: "No tracks were provided."
-    };
-
-  }
-
-  state.queue = tracks.filter(track => {
-    return getTrackId(track);
-  });
-
-  if (!state.queue.length) {
-
-    return {
-      success: false,
-      error: "Queue contains no valid tracks."
-    };
-
-  }
-
-  let index = state.queue.findIndex(track => {
-
-    return getTrackId(track) === String(startTrackId);
-
-  });
-
-  if (index < 0) index = 0;
-
-  return playTrack(state.queue[index], index);
-
-}
-
-function addToQueue(track) {
-
-  try {
-
-    validateTrack(track);
-
-  } catch (error) {
-
-    return {
-      success: false,
-      error: error.message
-    };
-
-  }
-
-  const existing = state.queue.some(item => {
-
-    return getTrackId(item) === getTrackId(track);
-
-  });
-
-  if (existing) {
-
-    notify("This track is already in the queue.");
-
-    return {
-      success: true,
-      alreadyExists: true
-    };
-
-  }
-
-  state.queue.push(track);
-
-  notify("Added to queue.");
-
-  sendPlayerState();
-
-  return {
-    success: true
-  };
-
-}
-
-/* =====================================================
-   NEXT TRACK
-===================================================== */
-
-async function nextTrack() {
-
-  if (!state.queue.length) {
-
-    notify("Your queue is empty.");
-
-    return;
-
-  }
-
-  let index;
-
-  if (state.shuffle && state.queue.length > 1) {
-
-    const choices = state.queue
-      .map((track, i) => i)
-      .filter(i => i !== state.currentIndex);
-
-    index = choices[
-      Math.floor(Math.random() * choices.length)
-    ];
-
-  } else {
-
-    index = state.currentIndex + 1;
-
-    if (index >= state.queue.length) {
-
-      if (state.repeat === "all") {
-
-        index = 0;
-
-      } else {
-
-        audio.pause();
-
-        notify("End of queue.");
-
-        return;
-
-      }
-
-    }
-
-  }
-
-  return playTrack(state.queue[index], index);
-
-}
-
-/* =====================================================
-   PREVIOUS TRACK
-===================================================== */
-
-async function previousTrack() {
-
-  if (!state.queue.length) return;
-
-  if (audio.currentTime > 3) {
-
-    audio.currentTime = 0;
-
-    return;
-
-  }
-
-  let index = state.currentIndex - 1;
-
-  if (index < 0) {
-
-    if (state.repeat === "all") {
-
-      index = state.queue.length - 1;
-
-    } else {
-
-      audio.currentTime = 0;
-
-      return;
-
-    }
-
-  }
-
-  return playTrack(state.queue[index], index);
-
-}
-
-/* =====================================================
-   REPEAT
-===================================================== */
-
-function cycleRepeat() {
-
-  if (state.repeat === "off") {
-    state.repeat = "all";
-  } else if (state.repeat === "all") {
-    state.repeat = "one";
-  } else {
-    state.repeat = "off";
-  }
-
-  updateControls();
-
-  sendPlayerState();
-
-}
-
-function setRepeat(mode) {
-
-  if (!["off", "all", "one"].includes(mode)) {
-
-    return {
-      success: false,
-      error: "Invalid repeat mode."
-    };
-
-  }
-
-  state.repeat = mode;
-
-  updateControls();
-
-  sendPlayerState();
-
-  return {
-    success: true,
-    repeat: mode
-  };
-
-}
-
-/* =====================================================
-   SHUFFLE
-===================================================== */
-
-function setShuffle(enabled) {
-
-  state.shuffle = Boolean(enabled);
-
-  updateControls();
-
-  sendPlayerState();
-
-  return {
-    success: true,
-    shuffle: state.shuffle
-  };
-
-}
-
-/* =====================================================
-   PLAYBACK CONTROLS
-===================================================== */
-
-async function togglePlayback() {
-
-  if (!audio.src) {
-
-    if (
-      state.currentIndex >= 0 &&
-      state.queue[state.currentIndex]
-    ) {
-
-      return playTrack(
-        state.queue[state.currentIndex],
-        state.currentIndex
-      );
-
-    }
-
-    notify("Choose a song first.");
-
-    return {
-      success: false,
-      error: "No track selected."
-    };
-
-  }
-
-  if (audio.paused) {
+  function validAudioUrl(url) {
+    if (!url) return false;
 
     try {
+      const parsed = new URL(url, location.href);
 
+      return (
+        parsed.protocol === "https:" ||
+        (
+          parsed.protocol === "http:" &&
+          parsed.origin === location.origin
+        )
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  function updateDisplay() {
+    const track = state.currentTrack;
+
+    if (!track) {
+      elements.title.textContent = "Nothing playing";
+      elements.artist.textContent = "Choose something to listen to";
+      elements.artwork.innerHTML = "<span>♫</span>";
+    } else {
+      elements.title.textContent =
+        safeString(track.title || track.name) || "Untitled track";
+
+      elements.artist.textContent =
+        safeString(
+          track.artist_name ||
+          track.artist ||
+          track.artistName
+        ) || "Unknown artist";
+
+      const artwork = getArtwork(track);
+
+      if (artwork) {
+        elements.artwork.innerHTML = "";
+
+        const image = document.createElement("img");
+        image.src = artwork;
+        image.alt = "Album artwork";
+
+        image.onerror = () => {
+          elements.artwork.innerHTML = "<span>♫</span>";
+        };
+
+        elements.artwork.appendChild(image);
+      } else {
+        elements.artwork.innerHTML = "<span>♫</span>";
+      }
+    }
+
+    elements.play.innerHTML = state.playing
+      ? "&#10074;&#10074;"
+      : "&#9654;";
+
+    elements.play.setAttribute(
+      "aria-label",
+      state.playing ? "Pause" : "Play"
+    );
+
+    elements.shuffle.classList.toggle("active", state.shuffle);
+
+    elements.repeat.classList.toggle(
+      "active",
+      state.repeat !== "off"
+    );
+
+    elements.repeat.textContent =
+      state.repeat === "one" ? "↻¹" : "↻";
+  }
+
+  function updateProgress() {
+    const duration = Number(audio.duration) || 0;
+    const currentTime = Number(audio.currentTime) || 0;
+
+    state.currentTime = currentTime;
+    state.duration = duration;
+
+    elements.progress.max = duration || 100;
+    elements.progress.value = Math.min(currentTime, duration || 100);
+
+    elements.currentTime.textContent = formatTime(currentTime);
+    elements.duration.textContent = formatTime(duration);
+  }
+
+  function getState() {
+    return {
+      ready: state.ready,
+
+      // The bridge expects "playing".
+      playing: state.playing,
+
+      // Keep the old alias for compatibility.
+      isPlaying: state.playing,
+
+      currentTrack: state.currentTrack,
+      queue: state.queue.slice(),
+      currentIndex: state.currentIndex,
+      shuffle: state.shuffle,
+      repeat: state.repeat,
+      currentTime: Number(audio.currentTime) || 0,
+      duration: Number(audio.duration) || 0,
+      volume: audio.volume,
+      muted: audio.muted
+    };
+  }
+
+  function sendToPage(action, payload = {}, requestId = null) {
+    if (!frame.contentWindow) return;
+
+    frame.contentWindow.postMessage({
+      source: SHELL_SOURCE,
+      version: PROTOCOL_VERSION,
+      action,
+      requestId,
+      payload
+    }, location.origin);
+  }
+
+  function broadcast(action, payload = {}) {
+    sendToPage(action, payload);
+  }
+
+  function respond(event, message, payload = {}) {
+    event.source.postMessage({
+      source: SHELL_SOURCE,
+      version: PROTOCOL_VERSION,
+      action: message.action + "_RESULT",
+      requestId: message.requestId,
+      payload
+    }, event.origin);
+  }
+
+  function broadcastState() {
+    broadcast("PLAYER_STATE", getState());
+  }
+
+  function updateMediaSession() {
+    if (!("mediaSession" in navigator)) return;
+
+    const track = state.currentTrack;
+
+    if (!track) return;
+
+    try {
+      const artwork = getArtwork(track);
+
+      navigator.mediaSession.metadata =
+        new MediaMetadata({
+          title: safeString(track.title || track.name) || "Untitled",
+          artist: safeString(
+            track.artist_name ||
+            track.artist ||
+            track.artistName
+          ) || "Unknown artist",
+          album: safeString(track.album_title || track.album) || "Resona",
+          artwork: artwork
+            ? [{ src: artwork }]
+            : []
+        });
+
+      navigator.mediaSession.setActionHandler("play", resume);
+      navigator.mediaSession.setActionHandler("pause", pause);
+      navigator.mediaSession.setActionHandler("nexttrack", nextTrack);
+      navigator.mediaSession.setActionHandler("previoustrack", previousTrack);
+
+      navigator.mediaSession.setActionHandler("seekto", details => {
+        if (Number.isFinite(details.seekTime)) {
+          seek(details.seekTime);
+        }
+      });
+    } catch (error) {
+      console.warn("Media Session update failed:", error);
+    }
+  }
+
+  async function playTrack(track, index = -1) {
+    if (!track || typeof track !== "object") {
+      showMessage("This track is not available.");
+      return { success: false, error: "Invalid track." };
+    }
+
+    const id = getTrackId(track);
+    const url = getAudioUrl(track);
+
+    if (!id) {
+      showMessage("This track has no valid ID.");
+      return { success: false, error: "Missing track ID." };
+    }
+
+    if (!validAudioUrl(url)) {
+      showMessage("This track has no valid streaming audio URL.");
+      return { success: false, error: "Invalid audio URL." };
+    }
+
+    state.currentTrack = track;
+
+    if (index >= 0 && index < state.queue.length) {
+      state.currentIndex = index;
+    } else {
+      const foundIndex = state.queue.findIndex(
+        item => getTrackId(item) === id
+      );
+
+      state.currentIndex = foundIndex;
+    }
+
+    audio.pause();
+    audio.src = url;
+    audio.load();
+
+    updateDisplay();
+    updateMediaSession();
+
+    broadcast("TRACK_CHANGED", track);
+
+    try {
       await audio.play();
 
-      return {
-        success: true
-      };
+      state.playing = true;
+      updateDisplay();
+      broadcast("PLAYBACK_PLAY", getState());
+      broadcastState();
 
+      return { success: true };
     } catch (error) {
+      state.playing = false;
+      updateDisplay();
 
-      notify("Unable to start playback.");
+      const message =
+        error && error.name === "NotAllowedError"
+          ? "Your browser blocked playback. Tap Play to continue."
+          : "Unable to play this track.";
+
+      showMessage(message);
+
+      broadcast("PLAYER_ERROR", {
+        message: error?.message || message
+      });
+
+      broadcastState();
 
       return {
         success: false,
-        error: error.message
+        error: error?.message || message
       };
+    }
+  }
 
+  async function playTrackWithQueue(track, queue) {
+    const tracks = Array.isArray(queue) ? queue : [];
+
+    state.queue = tracks.filter(item => getTrackId(item));
+
+    let index = state.queue.findIndex(
+      item => getTrackId(item) === getTrackId(track)
+    );
+
+    if (index < 0) {
+      state.queue.unshift(track);
+      index = 0;
     }
 
+    return playTrack(state.queue[index], index);
   }
 
-  audio.pause();
+  async function setQueue(tracks, startTrackId = null) {
+    state.queue = Array.isArray(tracks)
+      ? tracks.filter(item => getTrackId(item))
+      : [];
 
-  return {
-    success: true
-  };
+    let index = 0;
 
-}
+    if (startTrackId) {
+      const found = state.queue.findIndex(
+        item => getTrackId(item) === String(startTrackId)
+      );
 
-function seek(seconds) {
+      if (found >= 0) index = found;
+    }
 
-  const value = Number(seconds);
+    if (!state.queue.length) {
+      state.currentIndex = -1;
+      broadcastState();
 
-  if (
-    !Number.isFinite(value) ||
-    value < 0 ||
-    !Number.isFinite(audio.duration)
-  ) {
+      return { success: true };
+    }
 
-    return {
-      success: false,
-      error: "Invalid playback position."
-    };
-
+    return playTrack(state.queue[index], index);
   }
 
-  audio.currentTime = Math.min(
-    value,
-    audio.duration
-  );
+  function addToQueue(track) {
+    if (!track || !getTrackId(track)) {
+      return { success: false, error: "Invalid track." };
+    }
 
-  return {
-    success: true
-  };
+    const exists = state.queue.some(
+      item => getTrackId(item) === getTrackId(track)
+    );
 
-}
+    if (!exists) {
+      state.queue.push(track);
+    }
 
-function setVolume(value) {
+    broadcastState();
 
-  const volume = Number(value);
-
-  if (!Number.isFinite(volume)) {
-
-    return {
-      success: false,
-      error: "Invalid volume."
-    };
-
+    return { success: true };
   }
 
-  audio.volume = Math.max(0, Math.min(1, volume));
-
-  if (audio.volume > 0) {
-    audio.muted = false;
+  function pause() {
+    audio.pause();
   }
 
-  updateControls();
-
-  return {
-    success: true,
-    volume: audio.volume
-  };
-
-}
-
-function mute() {
-
-  audio.muted = true;
-
-  updateControls();
-
-  return {
-    success: true
-  };
-
-}
-
-function unmute() {
-
-  audio.muted = false;
-
-  updateControls();
-
-  return {
-    success: true
-  };
-
-}
-
-/* =====================================================
-   NAVIGATION
-===================================================== */
-
-function navigate(url) {
-
-  const raw = String(url || "").trim();
-
-  if (!raw) {
-
-    return {
-      success: false,
-      error: "Missing page address."
-    };
-
-  }
-
-  let destination;
-
-  try {
-
-    destination = new URL(raw, location.href);
-
-  } catch {
-
-    return {
-      success: false,
-      error: "Invalid page address."
-    };
-
-  }
-
-  if (destination.origin !== location.origin) {
-
-    return {
-      success: false,
-      error: "External navigation is not allowed."
-    };
-
-  }
-
-  const filename = destination.pathname
-    .split("/")
-    .pop();
-
-  if (!ALLOWED_PAGES.includes(filename)) {
-
-    return {
-      success: false,
-      error: "This Resona page is not available."
-    };
-
-  }
-
-  const target =
-    filename +
-    destination.search +
-    destination.hash;
-
-  const current = frame.getAttribute("src");
-
-  if (current === target) {
-
-    return {
-      success: true,
-      unchanged: true
-    };
-
-  }
-
-  frame.src = target;
-
-  return {
-    success: true,
-    url: target
-  };
-
-}
-
-/* =====================================================
-   PLAYER DISPLAY CONTROLS
-===================================================== */
-
-function updateControls() {
-
-  elements.play.textContent =
-    audio.paused ? "▶" : "Ⅱ";
-
-  elements.play.setAttribute(
-    "aria-label",
-    audio.paused ? "Play" : "Pause"
-  );
-
-  elements.shuffle.classList.toggle(
-    "active",
-    state.shuffle
-  );
-
-  elements.repeat.classList.toggle(
-    "active",
-    state.repeat !== "off"
-  );
-
-  elements.repeat.textContent =
-    state.repeat === "one" ? "↻¹" : "↻";
-
-  elements.repeat.title =
-    "Repeat " + state.repeat;
-
-  elements.shuffle.title =
-    state.shuffle ? "Shuffle on" : "Shuffle off";
-
-}
-
-/* =====================================================
-   AUDIO EVENTS
-===================================================== */
-
-audio.addEventListener("play", () => {
-
-  state.isPlaying = true;
-
-  updateControls();
-
-  broadcast("PLAYBACK_PLAY", getState());
-
-  sendPlayerState();
-
-  updateMediaSession();
-
-});
-
-audio.addEventListener("pause", () => {
-
-  state.isPlaying = false;
-
-  updateControls();
-
-  broadcast("PLAYBACK_PAUSE", getState());
-
-  sendPlayerState();
-
-  updateMediaSession();
-
-});
-
-audio.addEventListener("ended", async () => {
-
-  if (state.repeat === "one") {
-
-    audio.currentTime = 0;
+  async function resume() {
+    if (!audio.src) {
+      showMessage("Choose a track first.");
+      return { success: false };
+    }
 
     try {
       await audio.play();
-    } catch {}
+      return { success: true };
+    } catch (error) {
+      showMessage("Unable to resume playback.");
 
-    return;
-
+      return {
+        success: false,
+        error: error?.message || "Playback failed."
+      };
+    }
   }
 
-  broadcast("PLAYBACK_ENDED", getState());
-
-  if (state.currentIndex < state.queue.length - 1) {
-
-    await nextTrack();
-
-  } else if (state.repeat === "all") {
-
-    await nextTrack();
-
-  } else {
-
-    state.isPlaying = false;
-
-    updateControls();
-
-  }
-
-});
-
-audio.addEventListener("timeupdate", () => {
-
-  if (
-    !Number.isFinite(audio.duration) ||
-    audio.duration <= 0
-  ) return;
-
-  state.currentTime = audio.currentTime;
-
-  state.duration = audio.duration;
-
-  elements.progress.value = Math.round(
-    audio.currentTime / audio.duration * 1000
-  );
-
-  broadcast("TIME_UPDATE", {
-    currentTime: audio.currentTime,
-    duration: audio.duration
-  });
-
-});
-
-audio.addEventListener("loadedmetadata", () => {
-
-  state.duration = audio.duration || 0;
-
-  sendPlayerState();
-
-});
-
-audio.addEventListener("error", () => {
-
-  if (audio.src) {
-    notify("Audio could not be loaded.");
-  }
-
-  broadcast("PLAYER_ERROR", {
-    message: "Audio could not be loaded."
-  });
-
-});
-
-/* =====================================================
-   PROGRESS CONTROL
-===================================================== */
-
-elements.progress.addEventListener("input", event => {
-
-  if (!Number.isFinite(audio.duration)) return;
-
-  audio.currentTime =
-    audio.duration *
-    Number(event.target.value) / 1000;
-
-});
-
-/* =====================================================
-   BUTTON EVENTS
-===================================================== */
-
-elements.play.addEventListener(
-  "click",
-  togglePlayback
-);
-
-elements.next.addEventListener(
-  "click",
-  nextTrack
-);
-
-elements.previous.addEventListener(
-  "click",
-  previousTrack
-);
-
-elements.shuffle.addEventListener("click", () => {
-
-  setShuffle(!state.shuffle);
-
-});
-
-elements.repeat.addEventListener(
-  "click",
-  cycleRepeat
-);
-
-/* =====================================================
-   MEDIA SESSION
-===================================================== */
-
-function updateMediaSession() {
-
-  if (!("mediaSession" in navigator)) return;
-
-  const track = state.currentTrack;
-
-  if (!track) return;
-
-  try {
-
-    navigator.mediaSession.metadata =
-      new MediaMetadata({
-
-        title: getTrackTitle(track),
-
-        artist: getArtistName(track),
-
-        album: track.album_title || "Resona",
-
-        artwork: [
-          {
-            src: getArtwork(track),
-            sizes: "300x300",
-            type: "image/jpeg"
-          }
-        ]
-
-      });
-
-  } catch (error) {
-
-    console.warn(
-      "[Resona] Media metadata unavailable:",
-      error
-    );
-
-  }
-
-}
-
-if ("mediaSession" in navigator) {
-
-  const actions = {
-
-    play: () => audio.play().catch(() => {}),
-
-    pause: () => audio.pause(),
-
-    previoustrack: previousTrack,
-
-    nexttrack: nextTrack,
-
-    seekto: details => {
-
-      if (
-        Number.isFinite(details.seekTime) &&
-        Number.isFinite(audio.duration)
-      ) {
-        audio.currentTime = details.seekTime;
-      }
-
+  async function togglePlayback() {
+    if (audio.paused) {
+      return resume();
     }
 
-  };
+    pause();
 
-  Object.entries(actions).forEach(([action, handler]) => {
-
-    try {
-
-      navigator.mediaSession.setActionHandler(
-        action,
-        handler
-      );
-
-    } catch {}
-
-  });
-
-}
-
-/* =====================================================
-   MESSAGE HANDLER
-===================================================== */
-
-window.addEventListener("message", async event => {
-
-  if (event.source !== frame.contentWindow) return;
-
-  if (event.origin !== location.origin) return;
-
-  const message = event.data;
-
-  if (!message || typeof message !== "object") return;
-
-  if (message.source !== PAGE_SOURCE) return;
-
-  if (message.version !== "1.0.0") {
-
-    console.warn(
-      "[Resona] Bridge version mismatch:",
-      message.version
-    );
-
+    return { success: true };
   }
 
-  const payload = message.payload || {};
+  function nextTrack() {
+    if (!state.queue.length) {
+      showMessage("Your queue is empty.");
+      return { success: false };
+    }
 
-  let result = {
-    success: true
-  };
+    let nextIndex;
 
-  try {
+    if (state.shuffle && state.queue.length > 1) {
+      do {
+        nextIndex = Math.floor(Math.random() * state.queue.length);
+      } while (nextIndex === state.currentIndex);
+    } else {
+      nextIndex = state.currentIndex + 1;
+    }
+
+    if (nextIndex >= state.queue.length) {
+      if (state.repeat === "all") {
+        nextIndex = 0;
+      } else {
+        state.playing = false;
+        updateDisplay();
+        broadcastState();
+
+        return { success: false, error: "End of queue." };
+      }
+    }
+
+    return playTrack(state.queue[nextIndex], nextIndex);
+  }
+
+  function previousTrack() {
+    if (!state.queue.length) {
+      return { success: false };
+    }
+
+    if (audio.currentTime > 3) {
+      seek(0);
+      return { success: true };
+    }
+
+    let previousIndex = state.currentIndex - 1;
+
+    if (previousIndex < 0) {
+      if (state.repeat === "all") {
+        previousIndex = state.queue.length - 1;
+      } else {
+        previousIndex = 0;
+      }
+    }
+
+    return playTrack(state.queue[previousIndex], previousIndex);
+  }
+
+  function seek(seconds) {
+    const value = Number(seconds);
+
+    if (!Number.isFinite(value)) return;
+
+    if (Number.isFinite(audio.duration)) {
+      audio.currentTime = Math.max(
+        0,
+        Math.min(value, audio.duration)
+      );
+    }
+  }
+
+  function setVolume(value) {
+    const volume = Number(value);
+
+    if (!Number.isFinite(volume)) return;
+
+    audio.volume = Math.max(0, Math.min(1, volume));
+    state.volume = audio.volume;
+    state.muted = audio.muted;
+
+    broadcastState();
+  }
+
+  function mute() {
+    audio.muted = true;
+    state.muted = true;
+    broadcastState();
+  }
+
+  function unmute() {
+    audio.muted = false;
+    state.muted = false;
+    broadcastState();
+  }
+
+  function setShuffle(enabled) {
+    state.shuffle = Boolean(enabled);
+    updateDisplay();
+    broadcastState();
+  }
+
+  function setRepeat(mode) {
+    const allowed = ["off", "all", "one"];
+
+    state.repeat = allowed.includes(mode) ? mode : "off";
+
+    updateDisplay();
+    broadcastState();
+  }
+
+  function toggleShuffle() {
+    setShuffle(!state.shuffle);
+  }
+
+  function toggleRepeat() {
+    const modes = ["off", "all", "one"];
+    const index = modes.indexOf(state.repeat);
+
+    setRepeat(modes[(index + 1) % modes.length]);
+  }
+
+  function navigate(url) {
+    const allowedPages = [
+      "index.html",
+      "explore.html",
+      "search.html",
+      "artist.html",
+      "album.html",
+      "player.html",
+      "lyrics.html",
+      "library.html",
+      "playlists.html",
+      "downloads.html",
+      "profile.html",
+      "settings.html",
+      "login.html",
+      "register.html",
+      "forgot-password.html",
+      "artist-dashboard.html",
+      "upload.html"
+    ];
+
+    let parsed;
+
+    try {
+      parsed = new URL(url, location.href);
+    } catch {
+      return { success: false, error: "Invalid navigation URL." };
+    }
+
+    if (parsed.origin !== location.origin) {
+      return { success: false, error: "External navigation blocked." };
+    }
+
+    const filename = parsed.pathname.split("/").pop();
+
+    if (!allowedPages.includes(filename)) {
+      return { success: false, error: "Page not allowed." };
+    }
+
+    frame.src = parsed.href;
+
+    return { success: true };
+  }
+
+  function handleCommand(event, message) {
+    const payload = message.payload || {};
+    let result = { success: true };
 
     switch (message.action) {
 
       case "PAGE_READY":
-
-        result = {
-          success: true,
-          page: payload.page
-        };
-
+        state.ready = true;
+        result = { success: true };
         break;
 
       case "PLAY_TRACK":
-
-        result = await playTrackWithQueue(
+        result = playTrackWithQueue(
           payload.track,
-          payload.queue || []
+          payload.queue
         );
-
         break;
 
       case "SET_QUEUE":
-
-        result = await setQueue(
+        result = setQueue(
           payload.tracks,
           payload.startTrackId
         );
-
         break;
 
       case "ADD_TO_QUEUE":
-
         result = addToQueue(payload.track);
-
-        break;
-
-      case "NAVIGATE":
-
-        result = navigate(payload.url);
-
         break;
 
       case "PAUSE":
-
-        audio.pause();
-
-        result = {
-          success: true
-        };
-
+        pause();
         break;
 
       case "RESUME":
-
-        try {
-
-          await audio.play();
-
-          result = {
-            success: true
-          };
-
-        } catch (error) {
-
-          result = {
-            success: false,
-            error: error.message
-          };
-
-        }
-
+        result = resume();
         break;
 
       case "TOGGLE_PLAY":
-
-        result = await togglePlayback();
-
+        result = togglePlayback();
         break;
 
       case "NEXT_TRACK":
-
-        await nextTrack();
-
-        result = {
-          success: true
-        };
-
+        result = nextTrack();
         break;
 
       case "PREVIOUS_TRACK":
-
-        await previousTrack();
-
-        result = {
-          success: true
-        };
-
+        result = previousTrack();
         break;
 
       case "SEEK":
-
-        result = seek(payload.seconds);
-
+        seek(payload.seconds);
         break;
 
       case "SET_VOLUME":
-
-        result = setVolume(payload.volume);
-
+        setVolume(payload.volume);
         break;
 
       case "MUTE":
-
-        result = mute();
-
+        mute();
         break;
 
       case "UNMUTE":
-
-        result = unmute();
-
+        unmute();
         break;
 
       case "SET_SHUFFLE":
-
-        result = setShuffle(payload.enabled);
-
+        setShuffle(payload.enabled);
         break;
 
       case "SET_REPEAT":
-
-        result = setRepeat(payload.mode);
-
+        setRepeat(payload.mode);
         break;
 
       case "GET_PLAYER_STATE":
+        result = getState();
+        break;
 
-        result = {
-          success: true,
-          state: getState()
-        };
-
+      case "NAVIGATE":
+        result = navigate(payload.url);
         break;
 
       default:
-
         result = {
           success: false,
-          error: "Unknown player command."
+          error: "Unsupported command: " + message.action
         };
-
     }
 
-  } catch (error) {
-
-    console.error(
-      "[Resona Shell] Command error:",
-      error
-    );
-
-    result = {
-      success: false,
-      error: error.message
-    };
-
+    Promise.resolve(result)
+      .then(response => {
+        respond(event, message, response || { success: true });
+      })
+      .catch(error => {
+        respond(event, message, {
+          success: false,
+          error: error?.message || "Shell command failed."
+        });
+      });
   }
 
-  respond(event, message, result);
+  window.addEventListener("message", event => {
+    if (event.source !== frame.contentWindow) return;
+    if (event.origin !== location.origin) return;
 
-});
+    const message = event.data;
 
-/* =====================================================
-   PAGE LOAD
-===================================================== */
+    if (!message || message.source !== PAGE_SOURCE) return;
 
-frame.addEventListener("load", () => {
+    if (message.version !== PROTOCOL_VERSION) {
+      console.warn(
+        "Resona bridge protocol mismatch:",
+        message.version
+      );
 
-  elements.loading.classList.add("hidden");
+      return;
+    }
+
+    handleCommand(event, message);
+  });
+
+  /* Audio events */
+
+  audio.addEventListener("play", () => {
+    state.playing = true;
+    updateDisplay();
+    broadcast("PLAYBACK_PLAY", getState());
+    broadcastState();
+  });
+
+  audio.addEventListener("pause", () => {
+    state.playing = false;
+    updateDisplay();
+    broadcast("PLAYBACK_PAUSE", getState());
+    broadcastState();
+  });
+
+  audio.addEventListener("ended", () => {
+    state.playing = false;
+
+    if (state.repeat === "one") {
+      audio.currentTime = 0;
+      resume();
+      return;
+    }
+
+    nextTrack();
+
+    broadcast("PLAYBACK_ENDED", getState());
+  });
+
+  audio.addEventListener("timeupdate", () => {
+    updateProgress();
+
+    const now = Date.now();
+
+    if (now - lastProgressUpdate > 500) {
+      lastProgressUpdate = now;
+
+      broadcast("TIME_UPDATE", {
+        currentTime: audio.currentTime || 0,
+        duration: audio.duration || 0
+      });
+    }
+  });
+
+  audio.addEventListener("loadedmetadata", () => {
+    updateProgress();
+    broadcastState();
+  });
+
+  audio.addEventListener("durationchange", updateProgress);
+
+  audio.addEventListener("volumechange", () => {
+    state.volume = audio.volume;
+    state.muted = audio.muted;
+    broadcastState();
+  });
+
+  audio.addEventListener("error", () => {
+    state.playing = false;
+    updateDisplay();
+
+    const error = audio.error;
+
+    const message = error
+      ? "Audio playback error (" + error.code + ")."
+      : "Unable to load this audio.";
+
+    showMessage(message);
+
+    broadcast("PLAYER_ERROR", { message });
+    broadcastState();
+  });
+
+  /* Player controls */
+
+  elements.play.addEventListener("click", togglePlayback);
+  elements.previous.addEventListener("click", previousTrack);
+  elements.next.addEventListener("click", nextTrack);
+  elements.shuffle.addEventListener("click", toggleShuffle);
+  elements.repeat.addEventListener("click", toggleRepeat);
+
+  elements.progress.addEventListener("input", () => {
+    seek(Number(elements.progress.value));
+  });
+
+  /* Public shell API */
+
+  window.ResonaPlayer = {
+    version: ENGINE_VERSION,
+    protocolVersion: PROTOCOL_VERSION,
+
+    play: playTrack,
+    playTrack,
+    playTrackWithQueue,
+    setQueue,
+    addToQueue,
+
+    pause,
+    resume,
+    toggle: togglePlayback,
+    togglePlayback,
+
+    next: nextTrack,
+    nextTrack,
+    previous: previousTrack,
+    previousTrack,
+
+    seek,
+    setVolume,
+    mute,
+    unmute,
+
+    setShuffle,
+    setRepeat,
+    toggleShuffle,
+    toggleRepeat,
+
+    navigate,
+
+    getState,
+    refreshState: broadcastState,
+
+    getAudioElement: () => audio
+  };
+
+  /* Frame setup */
+
+  frame.addEventListener("load", () => {
+    elements.loading.classList.add("hidden");
+
+    /*
+     * Hide the iframe's duplicate mini-player.
+     * The persistent shell player remains visible.
+     * The iframe elements still exist for app.js.
+     */
+    try {
+      const frameDocument = frame.contentDocument;
+
+      if (frameDocument && frameDocument.head) {
+        let style = frameDocument.getElementById(
+          "resona-shell-player-style"
+        );
+
+        if (!style) {
+          style = frameDocument.createElement("style");
+          style.id = "resona-shell-player-style";
+
+          style.textContent = `
+            #mini-player {
+              display: none !important;
+            }
+          `;
+
+          frameDocument.head.appendChild(style);
+        }
+      }
+    } catch (error) {
+      console.warn("Could not adjust iframe player display:", error);
+    }
+
+    setTimeout(() => {
+      sendToPage("SHELL_READY", getState());
+      broadcastState();
+    }, 150);
+  });
+
+  /* Initial setup */
+
+  audio.volume = 1;
+
+  updateDisplay();
+  updateProgress();
 
   state.ready = true;
 
-  setTimeout(() => {
-
-    sendToPage("SHELL_READY", getState());
-
-    sendPlayerState();
-
-  }, 150);
-
-});
-
-/* =====================================================
-   INITIALIZATION
-===================================================== */
-
-elements.artwork.src = FALLBACK_ART;
-
-audio.volume = 1;
-
-updateControls();
-
-state.ready = true;
-
-/* =====================================================
-   PUBLIC PLAYER API
-===================================================== */
-
-window.ResonaPlayer = Object.freeze({
-
-  version: VERSION,
-
-  play: playTrack,
-
-  playWithQueue: playTrackWithQueue,
-
-  pause: () => audio.pause(),
-
-  resume: () => audio.play(),
-
-  toggle: togglePlayback,
-
-  next: nextTrack,
-
-  previous: previousTrack,
-
-  seek: seek,
-
-  setVolume: setVolume,
-
-  mute: mute,
-
-  unmute: unmute,
-
-  setShuffle: setShuffle,
-
-  setRepeat: setRepeat,
-
-  setQueue: setQueue,
-
-  addToQueue: addToQueue,
-
-  navigate: navigate,
-
-  getState: getState
-
-});
-
-console.info(
-  "[Resona Shell] Engine v" + VERSION + " initialized."
-);
+  console.info(
+    "Resona shell engine initialized:",
+    ENGINE_VERSION
+  );
 
 })();
 </script>
