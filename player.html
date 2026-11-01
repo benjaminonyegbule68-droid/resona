@@ -20,9 +20,7 @@
   --player-teal:#45dfc2;
 }
 
-*{
-  box-sizing:border-box;
-}
+*{box-sizing:border-box}
 
 body{
   background:
@@ -32,9 +30,7 @@ body{
   min-height:100vh;
 }
 
-button{
-  font:inherit;
-}
+button{font:inherit}
 
 .player-page{
   width:min(1150px,100%);
@@ -53,7 +49,6 @@ button{
 .player-top h1{
   font-size:17px;
   margin:0;
-  font-weight:700;
 }
 
 .player-top p{
@@ -128,9 +123,7 @@ button{
   animation-play-state:paused;
 }
 
-.vinyl.playing{
-  animation-play-state:running;
-}
+.vinyl.playing{animation-play-state:running}
 
 .vinyl::before{
   content:"";
@@ -138,7 +131,6 @@ button{
   inset:12%;
   border-radius:50%;
   border:1px solid rgba(255,255,255,.09);
-  box-shadow:0 0 0 5px rgba(255,255,255,.015);
 }
 
 .vinyl-art{
@@ -176,14 +168,11 @@ button{
   to{transform:rotate(360deg)}
 }
 
-.track-information{
-  margin-bottom:25px;
-}
+.track-information{margin-bottom:25px}
 
 .track-information h2{
   font-size:clamp(23px,4vw,34px);
   margin:0 0 8px;
-  letter-spacing:-.7px;
   overflow-wrap:anywhere;
 }
 
@@ -221,18 +210,9 @@ button{
   border-color:rgba(69,223,194,.4);
 }
 
-.action-button:disabled{
-  opacity:.4;
-  cursor:not-allowed;
-}
+.playback-section{min-width:0}
 
-.playback-section{
-  min-width:0;
-}
-
-.playback-heading{
-  margin-bottom:25px;
-}
+.playback-heading{margin-bottom:25px}
 
 .playback-heading span{
   font-size:11px;
@@ -247,9 +227,7 @@ button{
   margin:8px 0 0;
 }
 
-.progress-container{
-  margin:25px 0 22px;
-}
+.progress-container{margin:25px 0 22px}
 
 .progress-range{
   width:100%;
@@ -282,9 +260,7 @@ button{
   min-width:35px;
 }
 
-.control-button.active{
-  color:var(--player-teal);
-}
+.control-button.active{color:var(--player-teal)}
 
 .play-button{
   width:66px;
@@ -295,12 +271,6 @@ button{
   background:linear-gradient(135deg,#a78bfa,#45dfc2);
   font-size:25px;
   cursor:pointer;
-  box-shadow:0 5px 28px rgba(125,75,190,.3);
-}
-
-.play-button:disabled{
-  opacity:.45;
-  cursor:not-allowed;
 }
 
 .volume-row{
@@ -345,9 +315,7 @@ button{
   padding:20px 0;
 }
 
-.tab-content.active{
-  display:block;
-}
+.tab-content.active{display:block}
 
 .lyrics-content{
   white-space:pre-wrap;
@@ -356,12 +324,6 @@ button{
   font-size:14px;
   max-height:320px;
   overflow:auto;
-}
-
-.lyrics-placeholder{
-  color:var(--player-muted);
-  font-size:13px;
-  line-height:1.8;
 }
 
 .queue-list{
@@ -410,9 +372,7 @@ button{
   text-overflow:ellipsis;
 }
 
-.queue-item-info strong{
-  font-size:13px;
-}
+.queue-item-info strong{font-size:13px}
 
 .queue-item-info small{
   color:var(--player-muted);
@@ -428,9 +388,7 @@ button{
   padding:20px 10px;
 }
 
-.error-message{
-  color:#ff9baf;
-}
+.error-message{color:#ff9baf}
 
 .bottom-player{
   position:fixed;
@@ -468,9 +426,7 @@ button{
 }
 
 @media(max-width:760px){
-  .player-page{
-    padding:20px 17px 100px;
-  }
+  .player-page{padding:20px 17px 100px}
 
   .player-layout{
     grid-template-columns:1fr;
@@ -482,9 +438,7 @@ button{
     margin-bottom:27px;
   }
 
-  .playback-heading{
-    display:none;
-  }
+  .playback-heading{display:none}
 
   .main-controls{
     gap:22px;
@@ -496,13 +450,8 @@ button{
     height:62px;
   }
 
-  .volume-row{
-    margin-bottom:20px;
-  }
-
-  .player-tabs{
-    margin-top:18px;
-  }
+  .volume-row{margin-bottom:20px}
+  .player-tabs{margin-top:18px}
 }
 </style>
 </head>
@@ -519,9 +468,7 @@ button{
       <p>Your music, your moment.</p>
     </div>
 
-    <button class="icon-button" id="backButton" aria-label="Go back">
-      ←
-    </button>
+    <button class="icon-button" id="backButton" aria-label="Go back">←</button>
   </div>
 
   <div class="player-layout">
@@ -546,9 +493,9 @@ button{
         </p>
 
         <div class="track-actions">
-          <button class="action-button" id="likeButton" title="Like track" aria-label="Like track">♡</button>
-          <button class="action-button" id="saveButton" title="Save track" aria-label="Save track">＋</button>
-          <button class="action-button" id="shareButton" title="Share track" aria-label="Share track">↗</button>
+          <button class="action-button" id="likeButton" aria-label="Like track">♡</button>
+          <button class="action-button" id="saveButton" aria-label="Save track">＋</button>
+          <button class="action-button" id="shareButton" aria-label="Share track">↗</button>
         </div>
       </div>
 
@@ -560,8 +507,6 @@ button{
         <span>Resona player</span>
         <h2>Listen without limits.</h2>
       </div>
-
-      <audio id="audio" preload="metadata"></audio>
 
       <div class="progress-container">
         <input
@@ -581,17 +526,11 @@ button{
       </div>
 
       <div class="main-controls">
-
-        <button class="control-button" id="shuffleButton" title="Shuffle" aria-label="Shuffle">⤨</button>
-
-        <button class="control-button" id="previousButton" title="Previous track" aria-label="Previous track">⏮</button>
-
+        <button class="control-button" id="shuffleButton" aria-label="Shuffle">⤨</button>
+        <button class="control-button" id="previousButton" aria-label="Previous track">⏮</button>
         <button class="play-button" id="playButton" aria-label="Play">▶</button>
-
-        <button class="control-button" id="nextButton" title="Next track" aria-label="Next track">⏭</button>
-
-        <button class="control-button" id="repeatButton" title="Repeat" aria-label="Repeat">↻</button>
-
+        <button class="control-button" id="nextButton" aria-label="Next track">⏭</button>
+        <button class="control-button" id="repeatButton" aria-label="Repeat">↻</button>
       </div>
 
       <div class="volume-row">
@@ -601,11 +540,8 @@ button{
       </div>
 
       <div class="player-tabs">
-
         <button class="tab-button active" data-tab="queue">Up Next</button>
-
         <button class="tab-button" data-tab="lyrics">Lyrics</button>
-
       </div>
 
       <div class="tab-content active" id="queuePanel">
@@ -616,9 +552,7 @@ button{
 
       <div class="tab-content" id="lyricsPanel">
         <div class="lyrics-content" id="lyricsContent">
-          <div class="lyrics-placeholder">
-            Lyrics will appear here when they are available for this track.
-          </div>
+          Lyrics will appear here when available.
         </div>
       </div>
 
@@ -629,7 +563,6 @@ button{
     </section>
 
   </div>
-
 </main>
 
 <div class="bottom-player">
@@ -641,6 +574,8 @@ button{
 <div data-resona-mobile-nav></div>
 <div data-resona-footer></div>
 
+<!-- The bridge must load before navigation and this page's code. -->
+<script src="./js/shell-bridge.js"></script>
 <script src="./js/navigation.js"></script>
 
 <script>
@@ -650,17 +585,20 @@ button{
   const API_BASE =
     "https://resona-api.nearafrica-onyxtech.workers.dev";
 
-  const $ = id => document.getElementById(id);
+  const bridge = window.ResonaShellBridge;
 
-  const audio = $("audio");
+  const $ = id => document.getElementById(id);
 
   const state = {
     tracks: [],
+    currentTrack: null,
     currentIndex: -1,
-    shuffle: false,
-    repeat: false,
+    duration: 0,
+    currentTime: 0,
+    isPlaying: false,
     isSeeking: false,
-    currentTrack: null
+    shuffle: false,
+    repeat: false
   };
 
   const FALLBACK_ART =
@@ -674,43 +612,36 @@ button{
       </svg>
     `);
 
-  function setStatus(message, error = false) {
+  function setStatus(message,error=false){
     $("playerStatus").textContent = message;
-    $("playerStatus").classList.toggle("error-message", error);
+    $("playerStatus").classList.toggle("error-message",error);
   }
 
-  function formatTime(seconds) {
-    if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  function formatTime(seconds){
+    if(!Number.isFinite(seconds) || seconds < 0) return "0:00";
 
-    const minutes = Math.floor(seconds / 60);
-    const remaining = Math.floor(seconds % 60);
+    const minutes = Math.floor(seconds/60);
+    const remaining = Math.floor(seconds%60);
 
     return `${minutes}:${String(remaining).padStart(2,"0")}`;
   }
 
-  function getTrackId(track) {
-    return String(
-      track?.id ??
-      track?.track_id ??
-      track?.trackId ??
-      ""
-    );
+  function getId(track){
+    return String(track?.id ?? track?.track_id ?? track?.trackId ?? "");
   }
 
-  function getTitle(track) {
-    return track?.title ||
-      track?.name ||
-      "Untitled track";
+  function getTitle(track){
+    return track?.title || track?.name || "Untitled track";
   }
 
-  function getArtist(track) {
+  function getArtist(track){
     return track?.artist_name ||
       track?.artist_display_name ||
       track?.artist ||
       "Unknown artist";
   }
 
-  function getArtwork(track) {
+  function getArtwork(track){
     const url =
       track?.artwork_url ||
       track?.album_artwork_url ||
@@ -719,54 +650,37 @@ button{
       track?.artwork ||
       "";
 
-    if (!url) return FALLBACK_ART;
+    if(!url) return FALLBACK_ART;
 
-    try {
-      const parsed = new URL(url, location.href);
+    try{
+      const parsed = new URL(url,location.href);
 
-      if (
+      if(
         parsed.protocol !== "https:" &&
         parsed.origin !== location.origin
-      ) {
+      ){
         return FALLBACK_ART;
       }
 
       return parsed.href;
-    } catch {
+    }catch{
       return FALLBACK_ART;
     }
   }
 
-  function getAudioUrl(track) {
-    return (
-      track?.audio_url ||
-      track?.stream_url ||
-      track?.file_url ||
-      track?.audioUrl ||
-      track?.streamUrl ||
-      ""
-    );
+  function getArtistId(track){
+    return track?.artist_id || track?.artistId || "";
   }
 
-  function getArtistId(track) {
-    return (
-      track?.artist_id ||
-      track?.artistId ||
-      ""
-    );
-  }
-
-  async function api(path) {
-    const response = await fetch(API_BASE + path, {
-      method: "GET",
-      headers: {
-        "Accept": "application/json"
-      }
+  async function api(path){
+    const response = await fetch(API_BASE + path,{
+      method:"GET",
+      headers:{"Accept":"application/json"}
     });
 
     const result = await response.json().catch(() => null);
 
-    if (!response.ok) {
+    if(!response.ok){
       throw new Error(
         result?.error ||
         result?.message ||
@@ -774,7 +688,7 @@ button{
       );
     }
 
-    if (result?.success === false) {
+    if(result?.success === false){
       throw new Error(
         result.error ||
         result.message ||
@@ -785,21 +699,21 @@ button{
     return result;
   }
 
-  function extractList(result) {
-    if (Array.isArray(result)) return result;
-    if (Array.isArray(result?.data)) return result.data;
-    if (Array.isArray(result?.tracks)) return result.tracks;
-    if (Array.isArray(result?.results)) return result.results;
-
+  function extractList(result){
+    if(Array.isArray(result)) return result;
+    if(Array.isArray(result?.data)) return result.data;
+    if(Array.isArray(result?.tracks)) return result.tracks;
+    if(Array.isArray(result?.results)) return result.results;
     return [];
   }
 
-  function updateTrackDisplay(track) {
+  function updateTrackDisplay(track){
+    if(!track) return;
+
     state.currentTrack = track;
 
     $("trackTitle").textContent = getTitle(track);
     $("bottomTrackTitle").textContent = getTitle(track);
-
     $("artistLink").textContent = getArtist(track);
 
     const artistId = getArtistId(track);
@@ -808,9 +722,8 @@ button{
       ? `artist.html?id=${encodeURIComponent(artistId)}`
       : "artist.html";
 
-    const artwork = getArtwork(track);
+    $("coverArt").src = getArtwork(track);
 
-    $("coverArt").src = artwork;
     $("coverArt").onerror = () => {
       $("coverArt").src = FALLBACK_ART;
     };
@@ -822,22 +735,19 @@ button{
     loadLyrics(track);
   }
 
-  function renderQueue() {
+  function renderQueue(){
     const container = $("queueList");
+    container.replaceChildren();
 
-    if (!state.tracks.length) {
-      container.innerHTML =
-        '<div class="player-status">No tracks in your queue.</div>';
+    if(!state.tracks.length){
+      container.textContent = "No tracks in your queue.";
       return;
     }
 
-    container.innerHTML = "";
-
-    state.tracks.forEach((track, index) => {
+    state.tracks.forEach((track,index) => {
       const button = document.createElement("button");
 
       button.type = "button";
-
       button.className =
         "queue-item" +
         (index === state.currentIndex ? " current" : "");
@@ -859,7 +769,7 @@ button{
       information.append(title,artist);
       button.append(image,information);
 
-      button.addEventListener("click", () => {
+      button.addEventListener("click",() => {
         playTrack(index);
       });
 
@@ -867,15 +777,14 @@ button{
     });
   }
 
-  async function loadLyrics(track) {
+  async function loadLyrics(track){
     $("lyricsContent").textContent =
       "Lyrics are not available for this track yet.";
 
-    const id = getTrackId(track);
+    const id = getId(track);
+    if(!id) return;
 
-    if (!id) return;
-
-    try {
+    try{
       const result = await api(
         `/lyrics?track_id=${encodeURIComponent(id)}`
       );
@@ -887,87 +796,57 @@ button{
         result?.text ||
         "";
 
-      if (lyrics) {
+      if(lyrics){
         $("lyricsContent").textContent = lyrics;
       }
-    } catch {
-      // Lyrics are optional. The player remains usable.
+    }catch{
+      // Lyrics are optional.
     }
   }
 
-  async function playTrack(index, autoplay = true) {
-    if (
-      index < 0 ||
-      index >= state.tracks.length
-    ) return;
+  function updatePlaybackDisplay(playerState){
+    if(!playerState) return;
 
-    const track = state.tracks[index];
+    const track =
+      playerState.currentTrack ||
+      playerState.track ||
+      null;
 
-    state.currentIndex = index;
+    if(track){
+      const oldId = getId(state.currentTrack);
+      const newId = getId(track);
 
-    updateTrackDisplay(track);
+      if(oldId !== newId){
+        const index = state.tracks.findIndex(
+          item => getId(item) === newId
+        );
 
-    const audioUrl = getAudioUrl(track);
+        if(index >= 0) state.currentIndex = index;
 
-    if (!audioUrl) {
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
+        updateTrackDisplay(track);
+      }
+    }
 
-      $("playButton").disabled = true;
+    state.isPlaying = Boolean(playerState.isPlaying);
+    state.currentTime = Number(playerState.currentTime) || 0;
+    state.duration = Number(playerState.duration) || 0;
 
-      setStatus(
-        "This track does not currently have an available audio file.",
-        true
+    updatePlayButtons(state.isPlaying);
+
+    if(!state.isSeeking && state.duration > 0){
+      $("progress").value = Math.round(
+        state.currentTime / state.duration * 1000
       );
-
-      updatePlayButtons(false);
-      return;
     }
 
-    let parsed;
+    $("currentTime").textContent =
+      formatTime(state.currentTime);
 
-    try {
-      parsed = new URL(audioUrl, location.href);
-
-      if (
-        parsed.protocol !== "https:" &&
-        parsed.origin !== location.origin
-      ) {
-        throw new Error("Unsupported audio URL.");
-      }
-    } catch {
-      setStatus("The audio file URL is invalid or unsupported.",true);
-      return;
-    }
-
-    $("playButton").disabled = false;
-
-    audio.pause();
-    audio.src = parsed.href;
-    audio.load();
-
-    setStatus("Loading audio...");
-
-    if (autoplay) {
-      try {
-        await audio.play();
-        setStatus("Now playing.");
-      } catch (error) {
-        if (error.name === "NotAllowedError") {
-          setStatus("Tap Play to start listening.");
-        } else {
-          setStatus("Unable to play this audio file.",true);
-        }
-      }
-    } else {
-      setStatus("Track ready.");
-    }
-
-    renderQueue();
+    $("duration").textContent =
+      formatTime(state.duration);
   }
 
-  function updatePlayButtons(playing) {
+  function updatePlayButtons(playing){
     $("playButton").textContent = playing ? "Ⅱ" : "▶";
     $("bottomPlayButton").textContent = playing ? "Ⅱ" : "▶";
 
@@ -979,83 +858,48 @@ button{
     $("vinyl").classList.toggle("playing",playing);
   }
 
-  async function togglePlayback() {
-    if (!audio.src) {
-      if (state.currentIndex >= 0) {
-        await playTrack(state.currentIndex,true);
-      } else {
-        setStatus("Choose a track before playing music.",true);
-      }
+  function playTrack(index){
+    if(index < 0 || index >= state.tracks.length) return;
 
+    const track = state.tracks[index];
+
+    state.currentIndex = index;
+    updateTrackDisplay(track);
+
+    if(!bridge || !bridge.isInsideShell()){
+      setStatus(
+        "Open Resona through shell.html to use the shared player.",
+        true
+      );
       return;
     }
 
-    if (audio.paused) {
-      try {
-        await audio.play();
-      } catch {
-        setStatus("Unable to start playback.",true);
-      }
-    } else {
-      audio.pause();
-    }
+    bridge.setQueue(state.tracks,getId(track));
+    setStatus("Sending track to the Resona player...");
   }
 
-  function nextTrack() {
-    if (!state.tracks.length) return;
-
-    let nextIndex;
-
-    if (state.shuffle && state.tracks.length > 1) {
-      do {
-        nextIndex = Math.floor(
-          Math.random() * state.tracks.length
-        );
-      } while (nextIndex === state.currentIndex);
-    } else {
-      nextIndex = state.currentIndex + 1;
-
-      if (nextIndex >= state.tracks.length) {
-        if (state.repeat) {
-          nextIndex = 0;
-        } else {
-          audio.pause();
-          setStatus("You have reached the end of the queue.");
-          return;
-        }
-      }
-    }
-
-    playTrack(nextIndex,true);
-  }
-
-  function previousTrack() {
-    if (!state.tracks.length) return;
-
-    if (audio.currentTime > 3) {
-      audio.currentTime = 0;
+  function togglePlayback(){
+    if(!bridge){
+      setStatus("The Resona player connection is unavailable.",true);
       return;
     }
 
-    let previousIndex = state.currentIndex - 1;
-
-    if (previousIndex < 0) {
-      if (state.repeat) {
-        previousIndex = state.tracks.length - 1;
-      } else {
-        audio.currentTime = 0;
-        return;
-      }
-    }
-
-    playTrack(previousIndex,true);
+    bridge.toggle();
   }
 
-  async function loadTracks() {
-    const params = new URLSearchParams(location.search);
-    const requestedId = params.get("id");
+  function nextTrack(){
+    bridge?.next();
+  }
 
-    if (!requestedId) {
+  function previousTrack(){
+    bridge?.previous();
+  }
+
+  async function loadTracks(){
+    const requestedId =
+      new URLSearchParams(location.search).get("id");
+
+    if(!requestedId){
       setStatus(
         "No track was selected. Open a song from Explore or Search.",
         true
@@ -1063,32 +907,50 @@ button{
       return;
     }
 
-    try {
+    try{
       setStatus("Finding your track...");
 
       const result = await api("/tracks?limit=100&offset=0");
-
       const tracks = extractList(result);
 
-      if (!tracks.length) {
+      if(!tracks.length){
         throw new Error("No tracks were returned by the music catalogue.");
       }
 
       state.tracks = tracks;
 
       const index = tracks.findIndex(
-        track => getTrackId(track) === requestedId
+        track => getId(track) === requestedId
       );
 
-      if (index === -1) {
+      if(index < 0){
         throw new Error(
           "This track was not found in the currently loaded catalogue."
         );
       }
 
-      await playTrack(index,false);
+      state.currentIndex = index;
+      updateTrackDisplay(tracks[index]);
 
-    } catch (error) {
+      if(!bridge || !bridge.isInsideShell()){
+        setStatus(
+          "The shared player is not active. Open shell.html first.",
+          true
+        );
+        return;
+      }
+
+      /*
+        Prepare the shared queue without creating
+        a second audio player on this page.
+      */
+      bridge.setQueue(state.tracks,requestedId);
+
+      setStatus("Track added to the shared Resona player. Press Play to listen.");
+
+      updatePlaybackDisplay(bridge.getState());
+
+    }catch(error){
       setStatus(
         error.message || "Unable to load this track.",
         true
@@ -1096,145 +958,81 @@ button{
     }
   }
 
-  $("playButton").addEventListener(
-    "click",
-    togglePlayback
-  );
-
-  $("bottomPlayButton").addEventListener(
-    "click",
-    togglePlayback
-  );
-
-  $("nextButton").addEventListener(
-    "click",
-    nextTrack
-  );
-
-  $("previousButton").addEventListener(
-    "click",
-    previousTrack
-  );
+  $("playButton").addEventListener("click",togglePlayback);
+  $("bottomPlayButton").addEventListener("click",togglePlayback);
+  $("nextButton").addEventListener("click",nextTrack);
+  $("previousButton").addEventListener("click",previousTrack);
 
   $("shuffleButton").addEventListener("click",() => {
     state.shuffle = !state.shuffle;
+
+    bridge?.setShuffle(state.shuffle);
 
     $("shuffleButton").classList.toggle(
       "active",
       state.shuffle
     );
-
-    $("shuffleButton").title =
-      state.shuffle ? "Shuffle on" : "Shuffle off";
   });
 
   $("repeatButton").addEventListener("click",() => {
     state.repeat = !state.repeat;
 
+    bridge?.setRepeat(state.repeat ? "all" : "off");
+
     $("repeatButton").classList.toggle(
       "active",
       state.repeat
     );
-
-    $("repeatButton").title =
-      state.repeat ? "Repeat queue on" : "Repeat off";
   });
 
   $("volume").addEventListener("input",event => {
-    audio.volume = Number(event.target.value);
+    bridge?.setVolume(Number(event.target.value));
   });
 
   $("progress").addEventListener("input",event => {
     state.isSeeking = true;
 
-    if (Number.isFinite(audio.duration)) {
+    if(state.duration > 0){
       const ratio = Number(event.target.value) / 1000;
 
       $("currentTime").textContent =
-        formatTime(audio.duration * ratio);
+        formatTime(state.duration * ratio);
     }
   });
 
   $("progress").addEventListener("change",event => {
-    if (Number.isFinite(audio.duration)) {
+    if(state.duration > 0){
       const ratio = Number(event.target.value) / 1000;
 
-      audio.currentTime = audio.duration * ratio;
+      bridge?.seek(state.duration * ratio);
     }
 
     state.isSeeking = false;
   });
 
-  audio.addEventListener("timeupdate",() => {
-    if (!state.isSeeking && Number.isFinite(audio.duration)) {
-      $("progress").value =
-        Math.round((audio.currentTime / audio.duration) * 1000);
-    }
-
-    $("currentTime").textContent =
-      formatTime(audio.currentTime);
-  });
-
-  audio.addEventListener("loadedmetadata",() => {
-    $("duration").textContent =
-      formatTime(audio.duration);
-  });
-
-  audio.addEventListener("play",() => {
-    updatePlayButtons(true);
-    setStatus("Now playing.");
-  });
-
-  audio.addEventListener("pause",() => {
-    updatePlayButtons(false);
-  });
-
-  audio.addEventListener("ended",() => {
-    if (state.repeat && state.tracks.length === 1) {
-      audio.currentTime = 0;
-      audio.play().catch(() => {});
-      return;
-    }
-
-    nextTrack();
-  });
-
-  audio.addEventListener("error",() => {
-    if (audio.src) {
-      setStatus(
-        "The audio file could not be played. It may be unavailable or inaccessible.",
-        true
-      );
-    }
-  });
-
   $("likeButton").addEventListener("click",() => {
-    setStatus(
-      "Like functionality will connect to your Resona account and likes API."
-    );
+    setStatus("Like functionality still needs to be connected to the account API.");
   });
 
   $("saveButton").addEventListener("click",() => {
-    setStatus(
-      "Save functionality will connect to your Resona library."
-    );
+    setStatus("Library saving still needs to be connected to the account API.");
   });
 
   $("shareButton").addEventListener("click",async () => {
-    try {
-      if (navigator.share) {
+    try{
+      if(navigator.share){
         await navigator.share({
-          title: document.title,
-          url: location.href
+          title:document.title,
+          url:location.href
         });
-      } else if (navigator.clipboard) {
+      }else if(navigator.clipboard){
         await navigator.clipboard.writeText(location.href);
         setStatus("Track link copied.");
-      } else {
+      }else{
         setStatus("Sharing is unavailable in this browser.",true);
       }
-    } catch (error) {
-      if (error.name !== "AbortError") {
+    }catch(error){
+      if(error.name !== "AbortError"){
         setStatus("Unable to share this track.",true);
       }
     }
@@ -1248,32 +1046,48 @@ button{
         item.classList.toggle("active",item === button);
       });
 
-      $("queuePanel").classList.toggle(
-        "active",
-        tab === "queue"
-      );
-
-      $("lyricsPanel").classList.toggle(
-        "active",
-        tab === "lyrics"
-      );
+      $("queuePanel").classList.toggle("active",tab === "queue");
+      $("lyricsPanel").classList.toggle("active",tab === "lyrics");
     });
   });
 
   $("backButton").addEventListener("click",() => {
-    if (history.length > 1) {
-      history.back();
-    } else {
+    if(bridge && bridge.isInsideShell()){
+      bridge.navigate("explore.html");
+    }else{
       location.href = "explore.html";
     }
   });
 
-  audio.volume = 0.8;
+  /*
+    Read the shared player state periodically.
+    The audio itself remains inside shell.html.
+  */
+  function refreshPlayerState(){
+    if(!bridge || !bridge.isInsideShell()) return;
 
+    try{
+      updatePlaybackDisplay(bridge.getState());
+    }catch(error){
+      console.warn("Could not read Resona player state:",error);
+    }
+  }
+
+  if(bridge){
+    bridge.on("PLAYER_STATE",updatePlaybackDisplay);
+    bridge.on("TRACK_CHANGED",updatePlaybackDisplay);
+    bridge.on("TIME_UPDATE",updatePlaybackDisplay);
+    bridge.on("PLAY",updatePlaybackDisplay);
+    bridge.on("PAUSE",updatePlaybackDisplay);
+  }
+
+  setInterval(refreshPlayerState,700);
+
+  updatePlayButtons(false);
   loadTracks();
 
 })();
 </script>
 
 </body>
-          </html>
+</html>
