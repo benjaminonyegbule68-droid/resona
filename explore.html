@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+  <meta name="theme-color" content="#07070b">
+  <meta name="description" content="Explore music from around the world on Resona. Discover tracks, artists, albums and new sounds.">
+
+  <title>Explore Music | Resona</title>
+
+  <link rel="stylesheet" href="./css/shared.css">
+
+  <style>
+    .explore-hero {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      overflow: hidden;
+      min-height: 210px;
+      padding: clamp(24px, 5vw, 42px);
+      border: 1px solid var(--border);
+      border-radius: 25px;
+      background:
+        radial-gradient(circle at 85% 20%, rgba(45,212,191,.23), transparent 38%),
+        radial-gradient(circle at 70% 100%, rgba(167,139,250,.25), transparent 45%),
+        rgba(255,255,255,.035);
+    }
+
+    .explore-hero-content {
+      position: relative;
+      z-index: 1;
+      max-width: 570px;
+    }
+
+    .eyebrow {
+      margin-bottom: 10px;
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .explore-hero h1 {
+      font-size: clamp(31px, 5vw, 47px);
+      line-height: 1.15;
+      letter-spacing: -1.3px;
+    }
+
+    .explore-hero p {
+      max-width: 450px;
+      margin-top: 12px;
+      color: var(--muted);
+    }
+
+    .hero-decoration {
+      flex-shrink: 0;
+      color: rgba(167,139,250,.55);
+      font-size: clamp(70px, 12vw, 120px);
+    }
+
+    .explore-search {
+      position: relative;
+      margin-top: 24px;
+    }
+
+    .explore-search input {
+      min-height: 54px;
+      padding-left: 48px;
+      border-radius: 99px;
+    }
+
+    .search-symbol {
+      position: absolute;
+      top: 50%;
+      left: 18px;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 21px;
+      pointer-events: none;
+    }
+
+    .discovery-section {
+      margin-top: 34px;
+    }
+
+    .discovery-section .section-heading {
+      margin-top: 0;
+    }
+
+    .section-note {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .genre-list,
+    .country-list {
+      display: flex;
+      gap: 9px;
+      overflow-x: auto;
+      padding: 4px 1px 12px;
+      scrollbar-width: thin;
+    }
+
+    .genre-chip,
+    .country-chip {
+      flex-shrink: 0;
+      padding: 9px 16px;
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 12px;
+      transition: .2s;
+    }
+
+    .genre-chip:hover,
+    .country-chip:hover {
+      border-color: var(--purple);
+      color: var(--text);
+    }
+
+    .genre-chip.active,
+    .country-chip.active {
+      border-color: var(--teal);
+      background: rgba(45,212,191,.12);
+      color: var(--teal);
+    }
+
+    .track-card {
+      position: relative;
+      cursor: pointer;
+    }
+
+    .track-card .music-cover {
+      position: relative;
+    }
+
+    .card-play {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      display: grid;
+      place-items: center;
+      width: 39px;
+      height: 39px;
+      border-radius: 50%;
+      background: var(--gradient);
+      color: var(--bg);
+      font-size: 17px;
+      box-shadow: 0 5px 18px rgba(0,0,0,.3);
+    }
+
+    .artist-card,
+    .album-card {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid transparent;
+      border-radius: 17px;
+      background: rgba(255,255,255,.025);
+      text-align: left;
+      transition: .2s;
+    }
+
+    .artist-card:hover,
+    .album-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--border);
+      background: var(--surface);
+    }
+
+    .artist-cover,
+    .album-cover {
+      display: grid;
+      place-items: center;
+      width: 100%;
+      aspect-ratio: 1;
+      margin-bottom: 11px;
+      overflow: hidden;
+      border-radius: 14px;
+      background: linear-gradient(135deg,#312e81,#134e4a);
+      font-size: 35px;
+    }
+
+    .artist-cover {
+      border-radius: 50%;
+    }
+
+    .artist-cover img,
+    .album-cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .verified {
+      color: var(--teal);
+      font-size: 12px;
+    }
+
+    .discovery-status {
+      min-height: 20px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .load-more-wrap {
+      display: flex;
+      justify-content: center;
+      margin-top: 22px;
+    }
+
+    .catalogue-count {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .empty-state,
+    .loading-state,
+    .error-state {
+      grid-column: 1 / -1;
+    }
+
+    @media(max-width:520px) {
+      .explore-hero {
+        min-height: 190px;
+        padding: 23px 18px;
+      }
+
+      .hero-decoration {
+        font-size: 55px;
+      }
+
+      .discovery-section {
+        margin-top: 28px;
+      }
+    }
+  </style>
+</head>
+
+<body data-page="explore">
+
+<div class="resona-app">
+
+  <!-- SHARED HEADER -->
+  <div data-resona-header></div>
+
+  <main class="resona-main">
+
+    <div class="page-container">
+
+      <!-- HERO -->
+      <section class="explore-hero">
+
+        <div class="explore-hero-content">
+
+          <div class="eyebrow">
+            Your sound, your world
+          </div>
+
+          <h1>
+            Explore beyond<br>
+            your playlist.
+          </h1>
+
+          <p>
+            Discover music, meet new artists and explore
+            sounds from every corner of the world.
+          </p>
+
+        </div>
+
+        <div class="hero-decoration" aria-hidden="true">
+          ♫
+        </div>
+
+      </section>
+
+      <!-- SEARCH -->
+      <div class="explore-search">
+
+        <span class="search-symbol" aria-hidden="true">
+          ⌕
+        </span>
+
+        <input
+          id="explore-search"
+          class="field"
+          type="search"
+          placeholder="Search songs, artists and albums..."
+          autocomplete="off"
+          aria-label="Search music"
+        >
+
+      </div>
+
+      <div id="discovery-status"
+           class="discovery-status"
+           role="status"
+           aria-live="polite">
+        Connecting to the Resona catalogue...
+      </div>
+
+      <!-- GENRES -->
+      <section class="discovery-section">
+
+        <div class="section-heading">
+          <h2>Explore genres</h2>
+        </div>
+
+        <div id="genre-list" class="genre-list">
+
+          <button class="genre-chip active"
+                  data-genre="all">
+            All music
+          </button>
+
+          <span class="section-note">
+            Genres will be collected from published catalogue tracks.
+          </span>
+
+        </div>
+
+      </section>
+
+      <!-- COUNTRIES -->
+      <section class="discovery-section">
+
+        <div class="section-heading">
+          <h2>Explore by country</h2>
+        </div>
+
+        <div id="country-list" class="country-list">
+
+          <button class="country-chip active"
+                  data-country="all">
+            Worldwide
+          </button>
+
+          <span class="section-note">
+            Countries will appear as catalogue data becomes available.
+          </span>
+
+        </div>
+
+      </section>
+
+      <!-- TRACKS -->
+      <section class="discovery-section">
+
+        <div class="section-heading">
+
+          <div>
+            <h2>Discover tracks</h2>
+            <div id="track-count" class="catalogue-count">
+              Loading catalogue...
+            </div>
+          </div>
+
+          <button id="refresh-tracks"
+                  class="button-secondary"
+                  type="button">
+            ↻ Refresh
+          </button>
+
+        </div>
+
+        <div id="explore-tracks" class="music-grid">
+
+          <div class="loading-state">
+            Loading published tracks...
+          </div>
+
+        </div>
+
+        <div class="load-more-wrap">
+
+          <button id="load-more"
+                  class="button-secondary"
+                  type="button"
+                  hidden>
+            Load more tracks
+          </button>
+
+        </div>
+
+      </section>
+
+      <!-- ARTISTS -->
+      <section class="discovery-section">
+
+        <div class="section-heading">
+          <div>
+            <h2>Discover artists</h2>
+            <div id="artist-count" class="catalogue-count">
+              Loading artists...
+            </div>
+          </div>
+        </div>
+
+        <div id="explore-artists" class="artist-grid">
+
+          <div class="loading-state">
+            Loading artist catalogue...
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- ALBUMS -->
+      <section class="discovery-section">
+
+        <div class="section-heading">
+          <div>
+            <h2>Explore albums</h2>
+            <div id="album-count" class="catalogue-count">
+              Loading albums...
+            </div>
+          </div>
+        </div>
+
+        <div id="explore-albums" class="album-grid">
+
+          <div class="loading-state">
+            Loading album catalogue...
+          </div>
+
+        </div>
+
+      </section>
+
+      <footer data-resona-footer></footer>
+
+    </div>
+
+  </main>
+
+</div>
+
+<!-- MOBILE NAVIGATION -->
+<div data-resona-mobile-nav></div>
+
+<script src="./js/navigation.js"></script>
+
+<script>
+(() => {
+  "use strict";
+
+  /* =========================================
+     RESONA EXPLORE
+     Version 1.0.0
+     ========================================= */
+
+  const API =
+    "https://resona-api.nearafrica-onyxtech.workers.dev";
+
+  const state = {
+    tracks: [],
+    artists: [],
+    albums: [],
+
+    offset: 0,
+    limit: 24,
+    total: 0,
+
+    genre: "all",
+    country: "all",
+
+    loading: false,
+    searchTimer: null
+  };
+
+  const $ = id => document.getElementById(id);
+
+  const elements = {
+    status: $("discovery-status"),
+    tracks: $("explore-tracks"),
+    artists: $("explore-artists"),
+    albums: $("explore-albums"),
+
+    genres: $("genre-list"),
+    countries: $("country-list"),
+
+    trackCount: $("track-count"),
+    artistCount: $("artist-count"),
+    albumCount: $("album-count"),
+
+    loadMore: $("load-more"),
+    search: $("explore-search")
+  };
+
+  function escapeHTML(value) {
+    return String(value ?? "").replace(
+      /[&<>"']/g,
+      character => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      })[character]
+    );
+  }
+
+  function safeImage(value) {
+    if (!value) return "";
+
+    try {
+      const url = new URL(value, location.href);
+
+      if (
+        url.protocol !== "https:" &&
+        url.origin !== location.origin
+      ) {
+        return "";
+      }
+
+      if (
+        url.protocol !== "https:" &&
+        url.protocol !== "http:"
+      ) {
+        return "";
+      }
+
+      return url.href;
+    } catch {
+      return "";
+    }
+  }
+
+  function artwork(url, fallback = "♫") {
+    const image = safeImage(url);
+
+    if (!image) {
+      return escapeHTML(fallback);
+    }
+
+    return `
+      <img
+        src="${escapeHTML(image)}"
+        alt=""
+        loading="lazy"
+        onerror="this.remove();this.parentElement.textContent='♫'"
+      >
+    `;
+  }
+
+  async function apiGet(path) {
+    const response = await fetch(API + path, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json"
+      }
+    });
+
+    let result;
+
+    try {
+      result = await response.json();
+    } catch {
+      throw new Error("The catalogue returned an invalid response.");
+    }
+
+    if (!response.ok || result.success !== true) {
+      throw new Error(
+        result.error?.message ||
+        "Unable to load catalogue data."
+      );
+    }
+
+    return result;
+  }
+
+  function setStatus(message) {
+    elements.status.textContent = message;
+  }
+
+  function renderTrack(track) {
+    const title = escapeHTML(track.title || "Untitled track");
+
+    const artist = escapeHTML(
+      track.artist_name || "Unknown artist"
+    );
+
+    const image = artwork(
+      track.artwork_url || track.album_artwork_url
+    );
+
+    const duration = Number(track.duration_seconds);
+
+    const durationText =
+      Number.isFinite(duration) && duration > 0
+        ? formatDuration(duration)
+        : "";
+
+    return `
+      <article class="music-card track-card">
+
+        <div class="music-cover">
+
+          ${image}
+
+          <button
+            class="card-play"
+            type="button"
+            data-track-id="${escapeHTML(track.id)}"
+            aria-label="Open ${title}"
+            title="Track playback will be connected to the Resona player"
+          >
+            ▶
+          </button>
+
+        </div>
+
+        <div class="music-title">
+          ${title}
+        </div>
+
+        <div class="music-subtitle">
+          ${artist}
+        </div>
+
+        ${durationText
+          ? `<div class="music-subtitle">${durationText}</div>`
+          : ""}
+
+      </article>
+    `;
+  }
+
+  function renderArtist(artist) {
+    const name = escapeHTML(
+      artist.artist_name || "Unknown artist"
+    );
+
+    return `
+      <a
+        class="artist-card"
+        href="artist.html?id=${encodeURIComponent(artist.id)}"
+      >
+
+        <div class="artist-cover">
+
+          ${artwork(artist.profile_image_url, "◉")}
+
+        </div>
+
+        <div class="music-title">
+          ${name}
+          ${Number(artist.verified) === 1
+            ? '<span class="verified">✓</span>'
+            : ""}
+        </div>
+
+        <div class="music-subtitle">
+          ${escapeHTML(artist.country_code || "Artist")}
+        </div>
+
+      </a>
+    `;
+  }
+
+  function renderAlbum(album) {
+    const title = escapeHTML(
+      album.title || "Untitled album"
+    );
+
+    return `
+      <a
+        class="album-card"
+        href="album.html?id=${encodeURIComponent(album.id)}"
+      >
+
+        <div class="album-cover">
+
+          ${artwork(album.artwork_url)}
+
+        </div>
+
+        <div class="music-title">
+          ${title}
+        </div>
+
+        <div class="music-subtitle">
+          ${escapeHTML(album.artist_name || "Unknown artist")}
+        </div>
+
+      </a>
+    `;
+  }
+
+  function formatDuration(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    const remaining = Math.floor(seconds % 60);
+
+    return `${minutes}:${String(remaining).padStart(2, "0")}`;
+  }
+
+  function renderGenres() {
+    const genres = [
+      ...new Set(
+        state.tracks
+          .map(track => String(track.genre || "").trim())
+          .filter(Boolean)
+      )
+    ].sort((a, b) => a.localeCompare(b));
+
+    elements.genres.innerHTML = `
+      <button
+        class="genre-chip ${state.genre === "all" ? "active" : ""}"
+        data-genre="all"
+        type="button"
+      >
+        All music
+      </button>
+
+      ${genres.map(genre => `
+        <button
+          class="genre-chip ${state.genre === genre ? "active" : ""}"
+          data-genre="${escapeHTML(genre)}"
+          type="button"
+        >
+          ${escapeHTML(genre)}
+        </button>
+      `).join("")}
+    `;
+  }
+
+  function renderCountries() {
+    const countries = [
+      ...new Set(
+        state.tracks
+          .map(track => String(track.country_code || "").trim().toUpperCase())
+          .filter(Boolean)
+      )
+    ].sort();
+
+    elements.countries.innerHTML = `
+      <button
+        class="country-chip ${state.country === "all" ? "active" : ""}"
+        data-country="all"
+        type="button"
+      >
+        Worldwide
+      </button>
+
+      ${countries.map(country => `
+        <button
+          class="country-chip ${state.country === country ? "active" : ""}"
+          data-country="${escapeHTML(country)}"
+          type="button"
+        >
+          ${escapeHTML(country)}
+        </button>
+      `).join("")}
+    `;
+  }
+
+  function filteredTracks() {
+    const query = elements.search.value.trim().toLowerCase();
+
+    return state.tracks.filter(track => {
+      const matchesGenre =
+        state.genre === "all" ||
+        String(track.genre || "").toLowerCase() ===
+        state.genre.toLowerCase();
+
+      const matchesCountry =
+        state.country === "all" ||
+        String(track.country_code || "").toUpperCase() ===
+        state.country;
+
+      const matchesSearch =
+        !query ||
+        [
+          track.title,
+          track.artist_name,
+          track.album_title,
+          track.genre
+        ].some(value =>
+          String(value || "").toLowerCase().includes(query)
+        );
+
+      return matchesGenre && matchesCountry && matchesSearch;
+    });
+  }
+
+  function renderTracks() {
+    const tracks = filteredTracks();
+
+    elements.trackCount.textContent =
+      `${tracks.length} tracks shown`;
+
+    if (!tracks.length) {
+      elements.tracks.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">♫</div>
+          <h3>No matching tracks</h3>
+          <p>
+            Try another search or choose a different filter.
+          </p>
+        </div>
+      `;
+
+      return;
+    }
+
+    elements.tracks.innerHTML =
+      tracks.map(renderTrack).join("");
+  }
+
+  function renderArtists() {
+    elements.artistCount.textContent =
+      `${state.artists.length} artists`;
+
+    elements.artists.innerHTML = state.artists.length
+      ? state.artists.map(renderArtist).join("")
+      : `
+        <div class="empty-state">
+          <div class="empty-icon">◉</div>
+          <h3>No published artists yet</h3>
+          <p>Artist profiles will appear here when available.</p>
+        </div>
+      `;
+  }
+
+  function renderAlbums() {
+    elements.albumCount.textContent =
+      `${state.albums.length} albums`;
+
+    elements.albums.innerHTML = state.albums.length
+      ? state.albums.map(renderAlbum).join("")
+      : `
+        <div class="empty-state">
+          <div class="empty-icon">▣</div>
+          <h3>No published albums yet</h3>
+          <p>Albums will appear here when available.</p>
+        </div>
+      `;
+  }
+
+  async function loadTracks(reset = false) {
+    if (state.loading) return;
+
+    if (reset) {
+      state.offset = 0;
+      state.tracks = [];
+
+      elements.tracks.innerHTML = `
+        <div class="loading-state">
+          Loading published tracks...
+        </div>
+      `;
+    }
+
+    state.loading = true;
+
+    elements.loadMore.disabled = true;
+
+    try {
+      const result = await apiGet(
+        `/tracks?limit=${state.limit}&offset=${state.offset}`
+      );
+
+      const incoming = Array.isArray(result.data)
+        ? result.data
+        : [];
+
+      state.tracks.push(...incoming);
+
+      state.total = Number(result.meta?.total || 0);
+
+      state.offset += incoming.length;
+
+      renderGenres();
+      renderCountries();
+      renderTracks();
+
+      elements.loadMore.hidden =
+        state.offset >= state.total ||
+        incoming.length === 0;
+
+      setStatus(
+        state.total
+          ? `${state.total} published tracks in the Resona catalogue.`
+          : "The track catalogue is connected but has no published tracks yet."
+      );
+
+    } catch (error) {
+      if (reset) {
+        elements.tracks.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">⚠</div>
+            <h3>Unable to load tracks</h3>
+            <p>${escapeHTML(error.message)}</p>
+            <button class="button-secondary"
+                    id="retry-tracks"
+                    type="button"
+                    style="margin-top:15px">
+              Try again
+            </button>
+          </div>
+        `;
+      }
+
+      setStatus(
+        "The track catalogue could not be reached."
+      );
+
+    } finally {
+      state.loading = false;
+      elements.loadMore.disabled = false;
+    }
+  }
+
+  async function loadArtists() {
+    try {
+      const result = await apiGet(
+        "/artists?limit=24&offset=0"
+      );
+
+      state.artists = Array.isArray(result.data)
+        ? result.data
+        : [];
+
+      renderArtists();
+
+    } catch {
+      elements.artists.innerHTML = `
+        <div class="empty-state">
+          <h3>Artist catalogue unavailable</h3>
+          <p>Please try again later.</p>
+        </div>
+      `;
+
+      elements.artistCount.textContent =
+        "Unable to load artists";
+    }
+  }
+
+  async function loadAlbums() {
+    try {
+      const result = await apiGet(
+        "/albums?limit=24&offset=0"
+      );
+
+      state.albums = Array.isArray(result.data)
+        ? result.data
+        : [];
+
+      renderAlbums();
+
+    } catch {
+      elements.albums.innerHTML = `
+        <div class="empty-state">
+          <h3>Album catalogue unavailable</h3>
+          <p>Please try again later.</p>
+        </div>
+      `;
+
+      elements.albumCount.textContent =
+        "Unable to load albums";
+    }
+  }
+
+  /* =========================================
+     EVENTS
+     ========================================= */
+
+  elements.genres.addEventListener("click", event => {
+    const button = event.target.closest("[data-genre]");
+
+    if (!button) return;
+
+    state.genre = button.dataset.genre;
+
+    renderGenres();
+    renderTracks();
+  });
+
+  elements.countries.addEventListener("click", event => {
+    const button = event.target.closest("[data-country]");
+
+    if (!button) return;
+
+    state.country = button.dataset.country;
+
+    renderCountries();
+    renderTracks();
+  });
+
+  elements.search.addEventListener("input", () => {
+    clearTimeout(state.searchTimer);
+
+    state.searchTimer = setTimeout(
+      renderTracks,
+      180
+    );
+  });
+
+  elements.loadMore.addEventListener("click", () => {
+    loadTracks(false);
+  });
+
+  $("refresh-tracks").addEventListener("click", () => {
+    loadTracks(true);
+  });
+
+  elements.tracks.addEventListener("click", event => {
+    const button = event.target.closest("[data-track-id]");
+
+    if (!button) return;
+
+    const trackId = button.dataset.trackId;
+
+    window.location.href =
+      `player.html?id=${encodeURIComponent(trackId)}`;
+  });
+
+  elements.tracks.addEventListener("click", event => {
+    if (!event.target.closest("#retry-tracks")) return;
+
+    loadTracks(true);
+  });
+
+  /* =========================================
+     INITIAL LOAD
+     ========================================= */
+
+  async function initialize() {
+    await Promise.all([
+      loadTracks(true),
+      loadArtists(),
+      loadAlbums()
+    ]);
+  }
+
+  initialize();
+
+})();
+</script>
+
+</body>
+  </html>
