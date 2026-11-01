@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<meta name="theme-color" content="#090811">
+
+<title>Resona | Music Without Borders</title>
+
+<style>
+
+:root{
+  --bg:#090811;
+  --panel:#151220;
+  --panel2:#1d192b;
+  --border:rgba(255,255,255,.09);
+  --text:#f5f1ff;
+  --muted:#a29ab5;
+  --purple:#a78bfa;
+  --teal:#45dfc2;
+}
+
+*{
+  box-sizing:border-box;
+}
+
+html,body{
+  margin:0;
+  width:100%;
+  height:100%;
+  overflow:hidden;
+  background:var(--bg);
+  color:var(--text);
+  font-family:Arial,Helvetica,sans-serif;
+}
+
+/* APPLICATION */
+
+#resonaApp{
+  width:100%;
+  height:100%;
+  display:flex;
+  flex-direction:column;
+  position:relative;
+}
+
+/* PAGE AREA */
+
+#pageFrame{
+  width:100%;
+  flex:1;
+  min-height:0;
+  border:0;
+  background:var(--bg);
+}
+
+/* MINI PLAYER */
+
+#miniPlayer{
+  width:100%;
+  min-height:76px;
+  padding:10px 18px;
+  padding-bottom:max(10px,env(safe-area-inset-bottom));
+  background:rgba(17,14,27,.97);
+  border-top:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  gap:15px;
+  z-index:20;
+}
+
+/* TRACK INFO */
+
+#miniArtwork{
+  width:48px;
+  height:48px;
+  border-radius:9px;
+  object-fit:cover;
+  background:#292334;
+  flex-shrink:0;
+}
+
+#miniTrackInfo{
+  flex:1;
+  min-width:0;
+}
+
+#miniTrackTitle{
+  display:block;
+  font-size:13px;
+  font-weight:700;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+
+#miniArtist{
+  display:block;
+  font-size:11px;
+  color:var(--muted);
+  margin-top:5px;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+
+/* PLAYER CONTROLS */
+
+#miniControls{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.playerButton{
+  width:36px;
+  height:36px;
+  border:0;
+  border-radius:50%;
+  background:transparent;
+  color:var(--text);
+  cursor:pointer;
+  font-size:17px;
+}
+
+#shellPlayButton{
+  width:43px;
+  height:43px;
+  color:#090811;
+  background:linear-gradient(135deg,var(--purple),var(--teal));
+  font-size:18px;
+  font-weight:bold;
+}
+
+/* PROGRESS */
+
+#miniProgress{
+  position:absolute;
+  top:-2px;
+  left:0;
+  width:100%;
+  height:3px;
+  appearance:none;
+  background:rgba(255,255,255,.12);
+  cursor:pointer;
+}
+
+#miniProgress::-webkit-slider-thumb{
+  appearance:none;
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:var(--teal);
+}
+
+#miniProgress::-moz-range-thumb{
+  width:8px;
+  height:8px;
+  border:0;
+  border-radius:50%;
+  background:var(--teal);
+}
+
+/* AUDIO ENGINE */
+
+#resonaAudio{
+  display:none;
+}
+
+/* LOADING SCREEN */
+
+#loadingScreen{
+  position:absolute;
+  inset:0;
+  z-index:100;
+  background:var(--bg);
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  gap:13px;
+  transition:opacity .3s;
+}
+
+.logo{
+  font-size:36px;
+  font-weight:900;
+  letter-spacing:5px;
+  background:linear-gradient(120deg,var(--purple),var(--teal));
+  background-clip:text;
+  -webkit-background-clip:text;
+  color:transparent;
+}
+
+#loadingScreen p{
+  color:var(--muted);
+  font-size:12px;
+}
+
+.loader{
+  width:27px;
+  height:27px;
+  border:3px solid rgba(255,255,255,.1);
+  border-top-color:var(--teal);
+  border-radius:50%;
+  animation:rotate .8s linear infinite;
+}
+
+@keyframes rotate{
+  to{transform:rotate(360deg)}
+}
+
+/* ERROR MESSAGE */
+
+#playerMessage{
+  position:absolute;
+  bottom:90px;
+  left:50%;
+  transform:translateX(-50%);
+  background:#292139;
+  color:white;
+  border:1px solid var(--border);
+  border-radius:25px;
+  padding:10px 16px;
+  font-size:12px;
+  max-width:90%;
+  text-align:center;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .2s;
+  z-index:30;
+}
+
+#playerMessage.show{
+  opacity:1;
+}
+
+/* MOBILE */
+
+@media(max-width:600px){
+
+  #miniPlayer{
+    gap:10px;
+    padding-left:12px;
+    padding-right:12px;
+  }
+
+  #miniArtwork{
+    width:43px;
+    height:43px;
+  }
+
+  #miniTrackTitle{
+    font-size:12px;
+  }
+
+  #miniControls{
+    gap:5px;
+  }
+
+  .playerButton{
+    width:33px;
+    height:33px;
+  }
+
+  #shellPlayButton{
+    width:39px;
+    height:39px;
+  }
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="resonaApp">
+
+  <div id="loadingScreen">
+
+    <div class="logo">RESONA</div>
+
+    <div class="loader"></div>
+
+    <p>Preparing your music experience...</p>
+
+  </div>
+
+
+  <!-- PAGE DISPLAY -->
+
+  <iframe
+    id="pageFrame"
+    title="Resona pages"
+    src="index.html"
+    allow="autoplay; encrypted-media"
+  ></iframe>
+
+
+  <!-- PERSISTENT PLAYER -->
+
+  <div id="miniPlayer">
+
+    <input
+      type="range"
+      id="miniProgress"
+      min="0"
+      max="1000"
+      value="0"
+      aria-label="Playback progress"
+    >
+
+    <img
+      id="miniArtwork"
+      alt="Album artwork"
+    >
+
+    <div id="miniTrackInfo">
+
+      <span id="miniTrackTitle">Nothing playing</span>
+
+      <span id="miniArtist">Discover music on Resona</span>
+
+    </div>
+
+    <div id="miniControls">
+
+      <button
+        class="playerButton"
+        id="shellPreviousButton"
+        aria-label="Previous track"
+      >⏮</button>
+
+      <button
+        class="playerButton"
+        id="shellPlayButton"
+        aria-label="Play"
+      >▶</button>
+
+      <button
+        class="playerButton"
+        id="shellNextButton"
+        aria-label="Next track"
+      >⏭</button>
+
+    </div>
+
+  </div>
+
+  <div id="playerMessage"></div>
+
+</div>
+
+
+<!-- THE SINGLE PERSISTENT AUDIO ELEMENT -->
+
+<audio id="resonaAudio" preload="metadata"></audio>
+
+
+<script>
+
+(() => {
+
+"use strict";
+
+
+/* ==================================
+   RESONA SHARED APPLICATION ENGINE
+================================== */
+
+const audio = document.getElementById("resonaAudio");
+
+const frame = document.getElementById("pageFrame");
+
+const state = {
+
+  currentTrack:null,
+
+  queue:[],
+
+  currentIndex:-1,
+
+  shuffle:false,
+
+  repeat:false,
+
+  isPlaying:false
+
+};
+
+
+const FALLBACK_ART =
+  "data:image/svg+xml;charset=UTF-8," +
+  encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="300" height="300">
+      <rect width="100%" height="100%" fill="#211a35"/>
+      <text x="50%" y="55%" fill="#a78bfa"
+        font-size="90" text-anchor="middle"
+        font-family="Arial">R</text>
+    </svg>
+  `);
+
+
+/* ==================================
+   ELEMENTS
+================================== */
+
+const elements = {
+
+  artwork:document.getElementById("miniArtwork"),
+
+  title:document.getElementById("miniTrackTitle"),
+
+  artist:document.getElementById("miniArtist"),
+
+  play:document.getElementById("shellPlayButton"),
+
+  previous:document.getElementById("shellPreviousButton"),
+
+  next:document.getElementById("shellNextButton"),
+
+  progress:document.getElementById("miniProgress"),
+
+  message:document.getElementById("playerMessage"),
+
+  loading:document.getElementById("loadingScreen")
+
+};
+
+
+/* ==================================
+   MESSAGES
+================================== */
+
+function notify(message){
+
+  elements.message.textContent = message;
+
+  elements.message.classList.add("show");
+
+  clearTimeout(notify.timer);
+
+  notify.timer = setTimeout(() => {
+
+    elements.message.classList.remove("show");
+
+  },2500);
+
+}
+
+
+/* ==================================
+   TRACK INFORMATION
+================================== */
+
+function getTrackId(track){
+
+  return String(
+    track?.id ||
+    track?.track_id ||
+    ""
+  );
+
+}
+
+
+function getTrackTitle(track){
+
+  return (
+    track?.title ||
+    track?.name ||
+    "Untitled track"
+  );
+
+}
+
+
+function getArtistName(track){
+
+  return (
+    track?.artist_name ||
+    track?.artist ||
+    "Unknown artist"
+  );
+
+}
+
+
+function getArtwork(track){
+
+  const url =
+    track?.artwork_url ||
+    track?.album_artwork_url ||
+    track?.cover_url ||
+    "";
+
+  if(!url) return FALLBACK_ART;
+
+  try{
+
+    const parsed = new URL(url,location.href);
+
+    if(
+      parsed.protocol !== "https:" &&
+      parsed.origin !== location.origin
+    ){
+
+      return FALLBACK_ART;
+
+    }
+
+    return parsed.href;
+
+  }catch{
+
+    return FALLBACK_ART;
+
+  }
+
+}
+
+
+function getAudioUrl(track){
+
+  return (
+    track?.audio_url ||
+    track?.stream_url ||
+    track?.file_url ||
+    ""
+  );
+
+}
+
+
+/* ==================================
+   UPDATE MINI PLAYER
+================================== */
+
+function updateDisplay(track){
+
+  state.currentTrack = track;
+
+  elements.title.textContent = getTrackTitle(track);
+
+  elements.artist.textContent = getArtistName(track);
+
+  elements.artwork.src = getArtwork(track);
+
+  elements.artwork.onerror = () => {
+
+    elements.artwork.src = FALLBACK_ART;
+
+  };
+
+}
+
+
+/* ==================================
+   PLAY TRACK
+================================== */
+
+async function playTrack(track,index){
+
+  if(!track) return;
+
+  const url = getAudioUrl(track);
+
+  if(!url){
+
+    notify("This track has no available audio file.");
+
+    return;
+
+  }
+
+  let parsed;
+
+  try{
+
+    parsed = new URL(url,location.href);
+
+    if(
+      parsed.protocol !== "https:" &&
+      parsed.origin !== location.origin
+    ){
+
+      throw new Error("Unsupported audio URL.");
+
+    }
+
+  }catch{
+
+    notify("Invalid audio file address.");
+
+    return;
+
+  }
+
+  if(index !== undefined){
+
+    state.currentIndex = index;
+
+  }
+
+  updateDisplay(track);
+
+  audio.pause();
+
+  audio.src = parsed.href;
+
+  audio.load();
+
+  try{
+
+    await audio.play();
+
+    state.isPlaying = true;
+
+  }catch(error){
+
+    state.isPlaying = false;
+
+    if(error.name === "NotAllowedError"){
+
+      notify("Tap play to start listening.");
+
+    }else{
+
+      notify("Unable to play this track.");
+
+    }
+
+  }
+
+  updateControls();
+
+}
+
+
+/* ==================================
+   PLAY / PAUSE
+================================== */
+
+async function togglePlayback(){
+
+  if(!audio.src){
+
+    if(state.currentIndex >= 0){
+
+      await playTrack(
+        state.queue[state.currentIndex],
+        state.currentIndex
+      );
+
+    }else{
+
+      notify("Choose a song first.");
+
+    }
+
+    return;
+
+  }
+
+  if(audio.paused){
+
+    try{
+
+      await audio.play();
+
+    }catch{
+
+      notify("Unable to start playback.");
+
+    }
+
+  }else{
+
+    audio.pause();
+
+  }
+
+}
+
+
+/* ==================================
+   NEXT TRACK
+================================== */
+
+function nextTrack(){
+
+  if(!state.queue.length) return;
+
+  let index;
+
+  if(state.shuffle && state.queue.length > 1){
+
+    do{
+
+      index = Math.floor(
+        Math.random() * state.queue.length
+      );
+
+    }while(index === state.currentIndex);
+
+  }else{
+
+    index = state.currentIndex + 1;
+
+    if(index >= state.queue.length){
+
+      if(state.repeat){
+
+        index = 0;
+
+      }else{
+
+        audio.pause();
+
+        notify("End of queue.");
+
+        return;
+
+      }
+
+    }
+
+  }
+
+  playTrack(state.queue[index],index);
+
+}
+
+
+/* ==================================
+   PREVIOUS TRACK
+================================== */
+
+function previousTrack(){
+
+  if(!state.queue.length) return;
+
+  if(audio.currentTime > 3){
+
+    audio.currentTime = 0;
+
+    return;
+
+  }
+
+  let index = state.currentIndex - 1;
+
+  if(index < 0){
+
+    if(state.repeat){
+
+      index = state.queue.length - 1;
+
+    }else{
+
+      audio.currentTime = 0;
+
+      return;
+
+    }
+
+  }
+
+  playTrack(state.queue[index],index);
+
+}
+
+
+/* ==================================
+   QUEUE MANAGEMENT
+================================== */
+
+function setQueue(tracks,startId){
+
+  if(!Array.isArray(tracks) || !tracks.length){
+
+    notify("No tracks were provided.");
+
+    return;
+
+  }
+
+  state.queue = tracks.filter(track => {
+
+    return getTrackId(track);
+
+  });
+
+  let index = state.queue.findIndex(track => {
+
+    return getTrackId(track) === String(startId);
+
+  });
+
+  if(index < 0) index = 0;
+
+  playTrack(state.queue[index],index);
+
+}
+
+
+function addToQueue(track){
+
+  if(!track || !getTrackId(track)) return;
+
+  state.queue.push(track);
+
+  notify("Added to queue.");
+
+}
+
+
+/* ==================================
+   PLAYER CONTROLS
+================================== */
+
+function updateControls(){
+
+  elements.play.textContent =
+    audio.paused ? "▶" : "Ⅱ";
+
+  elements.play.setAttribute(
+    "aria-label",
+    audio.paused ? "Play" : "Pause"
+  );
+
+}
+
+
+elements.play.addEventListener(
+  "click",
+  togglePlayback
+);
+
+
+elements.next.addEventListener(
+  "click",
+  nextTrack
+);
+
+
+elements.previous.addEventListener(
+  "click",
+  previousTrack
+);
+
+
+audio.addEventListener("play",() => {
+
+  state.isPlaying = true;
+
+  updateControls();
+
+});
+
+
+audio.addEventListener("pause",() => {
+
+  state.isPlaying = false;
+
+  updateControls();
+
+});
+
+
+audio.addEventListener("ended",() => {
+
+  if(state.repeat && state.queue.length === 1){
+
+    audio.currentTime = 0;
+
+    audio.play().catch(() => {});
+
+    return;
+
+  }
+
+  nextTrack();
+
+});
+
+
+audio.addEventListener("error",() => {
+
+  notify("Audio could not be loaded.");
+
+});
+
+
+/* ==================================
+   PROGRESS
+================================== */
+
+audio.addEventListener("timeupdate",() => {
+
+  if(!Number.isFinite(audio.duration)) return;
+
+  elements.progress.value = Math.round(
+
+    audio.currentTime / audio.duration * 1000
+
+  );
+
+});
+
+
+elements.progress.addEventListener("input",event => {
+
+  if(!Number.isFinite(audio.duration)) return;
+
+  audio.currentTime =
+
+    audio.duration *
+    Number(event.target.value) / 1000;
+
+});
+
+
+/* ==================================
+   PAGE NAVIGATION
+================================== */
+
+function navigate(page){
+
+  const allowedPages = [
+
+    "index.html",
+    "explore.html",
+    "search.html",
+    "artist.html",
+    "album.html",
+    "player.html",
+    "lyrics.html",
+    "library.html",
+    "playlists.html",
+    "downloads.html",
+    "profile.html",
+    "settings.html",
+    "login.html",
+    "register.html",
+    "forgot-password.html",
+    "artist-dashboard.html",
+    "upload.html"
+
+  ];
+
+  const cleanPage = String(page || "");
+
+  const file = cleanPage.split("?")[0];
+
+  if(!allowedPages.includes(file)){
+
+    notify("This Resona page is not available.");
+
+    return;
+
+  }
+
+  frame.src = cleanPage;
+
+}
+
+
+frame.addEventListener("load",() => {
+
+  elements.loading.style.opacity = "0";
+
+  setTimeout(() => {
+
+    elements.loading.style.display = "none";
+
+  },300);
+
+});
+
+
+/* ==================================
+   COMMUNICATION WITH PAGES
+================================== */
+
+window.addEventListener("message",event => {
+
+  if(event.source !== frame.contentWindow) return;
+
+  const message = event.data;
+
+  if(!message || message.resona !== true) return;
+
+
+  switch(message.action){
+
+    case "PLAY_TRACK":
+
+      playTrack(message.track);
+
+      break;
+
+
+    case "SET_QUEUE":
+
+      setQueue(
+        message.tracks,
+        message.startTrackId
+      );
+
+      break;
+
+
+    case "ADD_TO_QUEUE":
+
+      addToQueue(message.track);
+
+      break;
+
+
+    case "NAVIGATE":
+
+      navigate(message.page);
+
+      break;
+
+
+    case "TOGGLE_PLAY":
+
+      togglePlayback();
+
+      break;
+
+
+    case "NEXT_TRACK":
+
+      nextTrack();
+
+      break;
+
+
+    case "PREVIOUS_TRACK":
+
+      previousTrack();
+
+      break;
+
+
+    case "GET_PLAYER_STATE":
+
+      event.source.postMessage({
+
+        resona:true,
+
+        action:"PLAYER_STATE",
+
+        currentTrack:state.currentTrack,
+
+        isPlaying:!audio.paused,
+
+        currentTime:audio.currentTime,
+
+        duration:audio.duration,
+
+        queue:state.queue
+
+      },"*");
+
+      break;
+
+
+    default:
+
+      console.warn(
+        "Unknown Resona message:",
+        message.action
+      );
+
+  }
+
+});
+
+
+/* ==================================
+   PUBLIC PLAYER API
+================================== */
+
+window.ResonaPlayer = {
+
+  play:playTrack,
+
+  pause:() => audio.pause(),
+
+  resume:() => audio.play(),
+
+  toggle:togglePlayback,
+
+  next:nextTrack,
+
+  previous:previousTrack,
+
+  setQueue:setQueue,
+
+  addToQueue:addToQueue,
+
+  navigate:navigate,
+
+  getState:() => ({
+
+    currentTrack:state.currentTrack,
+
+    queue:state.queue,
+
+    currentIndex:state.currentIndex,
+
+    isPlaying:!audio.paused,
+
+    currentTime:audio.currentTime,
+
+    duration:audio.duration
+
+  })
+
+};
+
+
+/* ==================================
+   INITIALIZATION
+================================== */
+
+elements.artwork.src = FALLBACK_ART;
+
+updateControls();
+
+})();
+
+</script>
+
+</body>
+  </html>
