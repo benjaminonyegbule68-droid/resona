@@ -1,16 +1,22 @@
 /* =========================================================
    RESONA SHELL BRIDGE
-   Connects individual Resona pages to shell.html.
+   Connects the Resona application to shell.html.
 
    Responsibilities:
-   - Communicate with the persistent audio player.
-   - Play tracks without reloading the shell.
+   - Communicate with the persistent shell audio player.
    - Control playback, queue, shuffle and repeat.
-   - Navigate between pages inside the shell.
-   - Receive player state updates.
-   - Provide a fallback when a page is opened outside shell.
+   - Receive player state and playback events.
+   - Navigate internally using SPA hash routes.
+   - Support legacy standalone-page navigation.
+   - Maintain secure postMessage communication.
 
-   Version: 1.0.0
+   Architecture:
+   shell.html owns the persistent audio engine.
+   index.html owns the application interface.
+   js/app.js owns internal SPA navigation.
+   This bridge connects the two.
+
+   Version: 1.1.0
 ========================================================= */
 
 (function () {
@@ -18,15 +24,24 @@
 
   if (window.ResonaShellBridge) return;
 
-  const VERSION = "1.0.0";
+  const VERSION = "1.1.0";
   const MESSAGE_TIMEOUT = 5000;
+
+  /* =======================================================
+     ENVIRONMENT
+  ======================================================= */
 
   let shellWindow = null;
   let isInsideShell = false;
   let shellReady = false;
 
-  let pendingRequests = new Map();
+  const pendingRequests = new Map();
+
   let requestCounter = 0;
+
+  /* =======================================================
+     PLAYER STATE
+  ======================================================= */
 
   let playerState = {
     ready: false,
@@ -42,6 +57,10 @@
     currentIndex: -1
   };
 
+  /* =======================================================
+     EVENT SYSTEM
+  ======================================================= */
+
   const listeners = {
     state: new Set(),
     play: new Set(),
@@ -53,21 +72,16 @@
     error: new Set()
   };
 
-  /* =======================================================
-     ENVIRONMENT DETECTION
-  ======================================================= */
-
   function detectShell() {
     try {
       isInsideShell =
-        window.parent &&
+        Boolean(window.parent) &&
         window.parent !== window;
 
-      if (isInsideShell) {
-        shellWindow = window.parent;
-      } else {
-        shellWindow = null;
-      }
+      shellWindow = isInsideShell
+        ? window.parent
+        : null;
+
     } catch (error) {
       isInsideShell = false;
       shellWindow = null;
@@ -79,7 +93,7 @@
   detectShell();
 
   /* =======================================================
-     EVENT SYSTEM
+     EVENT EMISSION
   ======================================================= */
 
   function emit(eventName, detail) {
@@ -162,13 +176,15 @@
 
         resolve({
           success: false,
-          error: "Shell request timed out."
+          error: "Shell request timed out: " + action
         });
+
       }, MESSAGE_TIMEOUT);
 
       pendingRequests.set(requestId, {
         resolve: resolve,
-        timeout: timeout
+        timeout: timeout,
+        action: action
       });
 
       try {
@@ -182,8 +198,10 @@
           },
           window.location.origin
         );
+
       } catch (error) {
         clearTimeout(timeout);
+
         pendingRequests.delete(requestId);
 
         resolve({
@@ -195,7 +213,38 @@
   }
 
   /* =======================================================
-     RECEIVE MESSAGES FROM SHELL
+     PLAYER STATE
+  ======================================================= */
+
+  function updateState(state) {
+    if (!state || typeof state !== "object") {
+      return;
+    }
+
+    playerState = Object.assign(
+      {},
+      playerState,
+      state,
+      {
+        ready: true
+      }
+    );
+
+    shellReady = true;
+
+    emit("state", getState());
+  }
+
+  function getState() {
+    return Object.assign({}, playerState, {
+      queue: Array.isArray(playerState.queue)
+        ? playerState.queue.slice()
+        : []
+    });
+  }
+
+  /* =======================================================
+     RECEIVE SHELL MESSAGES
   ======================================================= */
 
   function handleMessage(event) {
@@ -207,11 +256,19 @@
 
     const message = event.data;
 
-    if (!message || typeof message !== "object") return;
+    if (!message || typeof message !== "object") {
+      return;
+    }
 
-    if (message.source !== "resona-shell") return;
+    if (message.source !== "resona-shell") {
+      return;
+    }
 
-    /* Request response */
+    const payload = message.payload || {};
+
+    /* -----------------------------------------------
+       REQUEST RESPONSES
+    ----------------------------------------------- */
 
     if (message.requestId) {
       const pending = pendingRequests.get(
@@ -226,71 +283,124 @@
         );
 
         pending.resolve(
-          message.payload || {
-            success: true
-          }
+          payload && typeof payload === "object"
+            ? payload
+            : {
+                success: true
+              }
         );
       }
     }
 
-    /* Player state */
-
-    if (message.action === "PLAYER_STATE") {
-      updateState(message.payload || {});
-    }
-
-    /* Shell ready */
+    /* -----------------------------------------------
+       SHELL READY
+    ----------------------------------------------- */
 
     if (message.action === "SHELL_READY") {
       shellReady = true;
 
       playerState.ready = true;
 
-      emit("ready", playerState);
+      emit("ready", getState());
+
+      return;
     }
 
-    /* Track changes */
+    /* -----------------------------------------------
+       PLAYER STATE
+    ----------------------------------------------- */
+
+    if (message.action === "PLAYER_STATE") {
+      updateState(payload);
+
+      return;
+    }
+
+    /* -----------------------------------------------
+       TRACK CHANGED
+
+       Supports both:
+       payload: track
+
+       and:
+       payload: { track: track }
+    ----------------------------------------------- */
 
     if (message.action === "TRACK_CHANGED") {
-      const track = message.payload?.track || null;
+      const track =
+        payload.track ||
+        payload ||
+        null;
 
       playerState.currentTrack = track;
 
+      playerState.currentTime = 0;
+
       emit("trackchange", track);
+
+      return;
     }
 
-    /* Playback events */
+    /* -----------------------------------------------
+       PLAYBACK PLAY
+    ----------------------------------------------- */
 
     if (message.action === "PLAYBACK_PLAY") {
       playerState.playing = true;
 
-      emit("play", playerState);
+      emit("play", getState());
+
+      return;
     }
+
+    /* -----------------------------------------------
+       PLAYBACK PAUSE
+    ----------------------------------------------- */
 
     if (message.action === "PLAYBACK_PAUSE") {
       playerState.playing = false;
 
-      emit("pause", playerState);
+      emit("pause", getState());
+
+      return;
     }
+
+    /* -----------------------------------------------
+       PLAYBACK ENDED
+    ----------------------------------------------- */
 
     if (message.action === "PLAYBACK_ENDED") {
       playerState.playing = false;
 
-      emit("ended", playerState);
+      emit("ended", getState());
+
+      return;
     }
+
+    /* -----------------------------------------------
+       TIME UPDATE
+    ----------------------------------------------- */
 
     if (message.action === "TIME_UPDATE") {
       playerState.currentTime =
-        Number(message.payload?.currentTime) || 0;
+        Number(payload.currentTime) || 0;
 
       playerState.duration =
-        Number(message.payload?.duration) || 0;
+        Number(payload.duration) || 0;
 
-      emit("timeupdate", playerState);
+      emit("timeupdate", getState());
+
+      return;
     }
 
+    /* -----------------------------------------------
+       PLAYER ERROR
+    ----------------------------------------------- */
+
     if (message.action === "PLAYER_ERROR") {
-      emit("error", message.payload);
+      emit("error", payload);
+
+      return;
     }
   }
 
@@ -298,25 +408,6 @@
     "message",
     handleMessage
   );
-
-  /* =======================================================
-     UPDATE PLAYER STATE
-  ======================================================= */
-
-  function updateState(state) {
-    playerState = Object.assign(
-      {},
-      playerState,
-      state,
-      {
-        ready: true
-      }
-    );
-
-    shellReady = true;
-
-    emit("state", playerState);
-  }
 
   /* =======================================================
      TRACK VALIDATION
@@ -330,6 +421,7 @@
     const id = String(
       track.id ||
       track.track_id ||
+      track.trackId ||
       ""
     ).trim();
 
@@ -371,27 +463,30 @@
   ======================================================= */
 
   async function play(track, queue) {
-    let normalizedTrack;
-
     try {
-      normalizedTrack = normalizeTrack(track);
+      const normalizedTrack = normalizeTrack(track);
+
+      let normalizedQueue;
+
+      if (Array.isArray(queue)) {
+        normalizedQueue = queue.map(
+          normalizeTrack
+        );
+      } else {
+        normalizedQueue = [normalizedTrack];
+      }
+
+      return send("PLAY_TRACK", {
+        track: normalizedTrack,
+        queue: normalizedQueue
+      });
+
     } catch (error) {
       return {
         success: false,
         error: error.message
       };
     }
-
-    const normalizedQueue = Array.isArray(queue)
-      ? queue.map(function (item) {
-          return normalizeTrack(item);
-        })
-      : [normalizedTrack];
-
-    return send("PLAY_TRACK", {
-      track: normalizedTrack,
-      queue: normalizedQueue
-    });
   }
 
   /* =======================================================
@@ -415,6 +510,7 @@
         tracks: normalizedTracks,
         startTrackId: startTrackId || null
       });
+
     } catch (error) {
       return {
         success: false,
@@ -430,6 +526,7 @@
       return send("ADD_TO_QUEUE", {
         track: normalizedTrack
       });
+
     } catch (error) {
       return {
         success: false,
@@ -488,7 +585,10 @@
     }
 
     return send("SET_VOLUME", {
-      volume: Math.max(0, Math.min(1, value))
+      volume: Math.max(
+        0,
+        Math.min(1, value)
+      )
     });
   }
 
@@ -526,22 +626,31 @@
   }
 
   /* =======================================================
-     NAVIGATION
+     SPA NAVIGATION
+
+     These are internal sections of index.html.
+
+     They must not trigger shell iframe reloads.
   ======================================================= */
 
-  const ALLOWED_PAGES = [
-    "index.html",
-    "explore.html",
-    "search.html",
+  const SPA_PAGES = [
+    "home",
+    "explore",
+    "search",
+    "library",
+    "artists",
+    "albums",
+    "playlists",
+    "settings"
+  ];
+
+  const LEGACY_PAGES = [
     "artist.html",
     "album.html",
     "player.html",
     "lyrics.html",
-    "library.html",
-    "playlists.html",
     "downloads.html",
     "profile.html",
-    "settings.html",
     "login.html",
     "register.html",
     "forgot-password.html",
@@ -549,58 +658,183 @@
     "upload.html"
   ];
 
-  function navigate(page, query) {
-    const cleanPage = String(page || "")
-      .trim()
+  function normalizePageName(page) {
+    let value = String(page || "").trim();
+
+    if (!value) return "";
+
+    value = value
+      .replace(/^#/, "")
+      .replace(/^\/+/, "")
       .split("?")[0]
       .split("#")[0]
       .split("/")
-      .pop();
+      .pop()
+      .toLowerCase();
 
-    if (!ALLOWED_PAGES.includes(cleanPage)) {
+    if (value.endsWith(".html")) {
+      value = value.slice(0, -5);
+    }
+
+    return value;
+  }
+
+  function buildQueryString(query) {
+    if (!query) return "";
+
+    if (typeof query === "string") {
+      const cleaned = query.replace(/^\?/, "");
+
+      return cleaned
+        ? "?" + cleaned
+        : "";
+    }
+
+    if (
+      typeof query === "object" &&
+      !(query instanceof URLSearchParams)
+    ) {
+      const params = new URLSearchParams();
+
+      Object.keys(query).forEach(function (key) {
+        const value = query[key];
+
+        if (value !== undefined && value !== null) {
+          params.set(key, String(value));
+        }
+      });
+
+      const result = params.toString();
+
+      return result ? "?" + result : "";
+    }
+
+    if (query instanceof URLSearchParams) {
+      const result = query.toString();
+
+      return result ? "?" + result : "";
+    }
+
+    return "";
+  }
+
+  function navigate(page, query) {
+    const cleanPage = normalizePageName(page);
+
+    if (!cleanPage) {
+      return Promise.resolve({
+        success: false,
+        error: "A destination page is required."
+      });
+    }
+
+    const queryString = buildQueryString(query);
+
+    /* -----------------------------------------------
+       INTERNAL SPA NAVIGATION
+    ----------------------------------------------- */
+
+    if (SPA_PAGES.includes(cleanPage)) {
+      try {
+        const newHash =
+          "#" + cleanPage + queryString;
+
+        if (window.location.hash !== newHash) {
+          window.location.hash = newHash;
+        } else {
+          window.dispatchEvent(
+            new HashChangeEvent("hashchange")
+          );
+        }
+
+        return Promise.resolve({
+          success: true,
+          navigation: "spa",
+          page: cleanPage
+        });
+
+      } catch (error) {
+        return Promise.resolve({
+          success: false,
+          error: error.message
+        });
+      }
+    }
+
+    /* -----------------------------------------------
+       LEGACY STANDALONE NAVIGATION
+
+       Retained for pages that genuinely need a
+       separate HTML document.
+    ----------------------------------------------- */
+
+    const legacyFilename = cleanPage + ".html";
+
+    if (!LEGACY_PAGES.includes(legacyFilename)) {
       return Promise.resolve({
         success: false,
         error: "Page is not allowed."
       });
     }
 
-    let target = cleanPage;
-
-    if (query) {
-      const params = new URLSearchParams(query);
-
-      const queryString = params.toString();
-
-      if (queryString) {
-        target += "?" + queryString;
-      }
-    }
-
     return send("NAVIGATE", {
-      url: target
+      url: legacyFilename + queryString
     });
   }
 
   /* =======================================================
-     PLAYER STATE
+     PLAYER STATE REFRESH
   ======================================================= */
 
-  function getState() {
-    return Object.assign({}, playerState);
+  function containsPlayerState(value) {
+    if (!value || typeof value !== "object") {
+      return false;
+    }
+
+    return (
+      "playing" in value ||
+      "isPlaying" in value ||
+      "currentTrack" in value ||
+      "currentTime" in value ||
+      "duration" in value ||
+      "volume" in value ||
+      "queue" in value ||
+      "currentIndex" in value
+    );
   }
 
   async function refreshState() {
     const response = await send("GET_PLAYER_STATE");
 
-    if (response.success && response.state) {
-      updateState(response.state);
+    if (!response || response.success === false) {
+      return response;
+    }
+
+    /*
+       Supports both:
+
+       { state: {...}, success: true }
+
+       and the shell's direct state response:
+
+       { playing: false, currentTrack: null, ... }
+    */
+
+    const candidate =
+      response.state &&
+      typeof response.state === "object"
+        ? response.state
+        : response;
+
+    if (containsPlayerState(candidate)) {
+      updateState(candidate);
     }
 
     return response;
   }
 
   /* =======================================================
-     MESSAGE TO PAGES
+     READY STATUS
   ======================================================= */
 
   function isReady() {
@@ -668,18 +902,31 @@
 
   if (isInsideShell) {
     send("PAGE_READY", {
-      page: window.location.pathname
+      page: window.location.pathname,
+      application: "resona-spa",
+      version: VERSION
     });
 
     setTimeout(function () {
-      refreshState();
+      refreshState().catch(function (error) {
+        console.warn(
+          "[Resona Bridge] Initial state refresh failed:",
+          error
+        );
+      });
     }, 500);
   }
+
+  /* =======================================================
+     DIAGNOSTICS
+  ======================================================= */
 
   console.info(
     "[Resona Shell Bridge] Loaded v" + VERSION,
     {
-      insideShell: isInsideShell
+      insideShell: isInsideShell,
+      architecture: "SPA",
+      shellOwnsAudio: true
     }
   );
 
