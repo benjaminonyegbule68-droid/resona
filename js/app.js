@@ -148,9 +148,7 @@ const RESONA_MOODS = [
 const ResonaUtils = {
   $(selector, root = document) {
     return root.querySelector(selector);
-  },
-
-  \[ (selector, root = document) {
+  }, \](selector, root = document) {
     return Array.from(root.querySelectorAll(selector));
   },
 
@@ -438,7 +436,6 @@ const ResonaLibrary = {
    ========================================================= */
 
 const ResonaNavigation = {
-  // Mapping from logical page name → actual element ID on the live site
   pageMap: {
     home: "home-page",
     explore: "explore-page",
@@ -492,7 +489,7 @@ const ResonaNavigation = {
     ResonaUtils.writeStorage("last_page", target);
 
     // Update navigation buttons (supports both attributes)
-    ResonaUtils. \]("[data-page-target], [data-page], .nav-button").forEach(navButton => {
+    ResonaUtils.$$("[data-page-target], [data-page], .nav-button").forEach(navButton => {
       const buttonPage =
         navButton.dataset.pageTarget ||
         navButton.dataset.page ||
@@ -536,7 +533,6 @@ const ResonaNavigation = {
         ResonaLibraryPage.render();
         break;
       default:
-        // artists / albums / playlists / settings can be extended later
         break;
     }
   }
@@ -630,8 +626,6 @@ const ResonaTrackUI = {
 
 const ResonaHome = {
   render() {
-    // The live site already has most of the home structure.
-    // We only enhance the featured / empty states if needed.
     const featured = ResonaUtils.$("#featured-tracks");
     if (!featured) return;
 
@@ -655,7 +649,6 @@ const ResonaHome = {
 
 const ResonaExplore = {
   render() {
-    // Keep existing explore structure; only update dynamic lists when data exists
     const tracksContainer = ResonaUtils.$("#explore-tracks");
     if (tracksContainer && ResonaState.tracks.length) {
       tracksContainer.innerHTML = ResonaState.tracks
@@ -690,8 +683,7 @@ const ResonaExplore = {
 
 const ResonaSearch = {
   render() {
-    // The live HTML already has the search UI.
-    // We just make sure the input works with our state.
+    // Live HTML already has the search UI
   },
 
   open(query = "") {
@@ -910,7 +902,6 @@ const ResonaPlayer = {
 
     const percentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-    // Live site progress elements
     const fill = ResonaUtils.$("#player-progress-fill");
     if (fill) fill.style.width = percentage + "%";
 
@@ -929,7 +920,6 @@ const ResonaPlayer = {
   updatePlayerUI() {
     const track = ResonaState.currentTrack;
 
-    // Mini player visibility
     const mini = ResonaUtils.$("#mini-player");
     if (mini) {
       mini.style.display = track ? "flex" : "";
@@ -950,7 +940,6 @@ const ResonaPlayer = {
     setText("#now-playing-title", track.title);
     setText("#now-playing-artist", track.artist);
 
-    // Play / Pause icons
     const playLabel = ResonaState.isPlaying ? "❚❚" : "▶";
     ["#mini-player-toggle", "#player-toggle"].forEach(sel => {
       const btn = ResonaUtils.$(sel);
@@ -1055,7 +1044,7 @@ const ResonaEvents = {
     if (this.bound) return;
     this.bound = true;
 
-    // Navigation – supports both data-page-target (live HTML) and data-page
+    // Navigation – supports both data-page-target and data-page
     document.addEventListener("click", event => {
       const pageButton = event.target.closest("[data-page-target], [data-page]");
       if (pageButton) {
@@ -1191,12 +1180,6 @@ async function initResona() {
 
   ResonaNavigation.show(initialPage);
 
-  // Hide mini-player until a track is playing
-  const mini = ResonaUtils.$("#mini-player");
-  if (mini && !ResonaState.currentTrack) {
-    // leave it visible but in empty state (matches current design)
-  }
-
   const nowPlaying = ResonaUtils.$("#now-playing");
   if (nowPlaying) {
     nowPlaying.classList.remove("open");
@@ -1247,4 +1230,4 @@ if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initResona, { once: true });
 } else {
   initResona();
-    }
+       }
