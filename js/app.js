@@ -1,7 +1,7 @@
 /* =========================================================
    RESONA — APPLICATION ENTRY POINT
    File: js/app.js
-   Version: 2.2.0
+   Version: 2.3.0
 
    Coordinates:
    - api.js
@@ -22,7 +22,7 @@
     return;
   }
 
-  const VERSION = "2.2.0";
+  const VERSION = "2.3.0";
 
   const api = window.ResonaAPI || null;
   const player = window.ResonaPlayer || null;
@@ -56,10 +56,16 @@
     initializing: false,
     currentPage: "home",
     lastPage: "home",
+
+    routeParams: {},
+
     currentTrack: null,
     activeSearch: "",
     searchTimer: null,
     searchRequestId: 0,
+
+    lastRouteSignature: "",
+
     errors: [],
     cleanup: [],
     unsubscribers: []
@@ -239,6 +245,147 @@
     return VALID_PAGES.has(value)
       ? value
       : "home";
+  }
+
+  /*
+   * Parse a route without losing its query parameters.
+   *
+   * Supported:
+   * #home
+   * #/home
+   * #explore?genre=afrobeats
+   * #search?q=burna%20boy
+   * #/search?q=burna%20boy
+   */
+
+  function parseRoute(input) {
+    let raw = String(input || "").trim();
+
+    if (!raw) {
+      return {
+        page: "home",
+        params: new URLSearchParams()
+      };
+    }
+
+    raw = raw.replace(/^.*#/, "");
+    raw = raw.replace(/^\/+/, "");
+
+    let pagePart = raw;
+    let queryPart = "";
+
+    const questionIndex = raw.indexOf("?");
+
+    if (questionIndex !== -1) {
+      pagePart = raw.slice(0, questionIndex);
+      queryPart = raw.slice(questionIndex + 1);
+    }
+
+    pagePart = pagePart
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, "-");
+
+    const page = normalizePage(pagePart);
+
+    let params;
+
+    try {
+      params = new URLSearchParams(queryPart);
+    } catch (error) {
+      params = new URLSearchParams();
+      recordError(error, "route-query-parse");
+    }
+
+    return {
+      page: page,
+      params: params
+    };
+  }
+
+  function paramsToObject(params) {
+    const result = {};
+
+    if (!params) return result;
+
+    params.forEach(function (value, key) {
+      if (Object.prototype.hasOwnProperty.call(result, key)) {
+        if (!Array.isArray(result[key])) {
+          result[key] = [result[key]];
+        }
+
+        result[key].push(value);
+      } else {
+        result[key] = value;
+      }
+    });
+
+    return result;
+  }
+
+  function normalizeQueryParams(input) {
+    const params = new URLSearchParams();
+
+    if (!input) return params;
+
+    if (input instanceof URLSearchParams) {
+      input.forEach(function (value, key) {
+        params.append(key, value);
+      });
+
+      return params;
+    }
+
+    if (typeof input === "string") {
+      const clean = input.replace(/^\?/, "");
+
+      new URLSearchParams(clean).forEach(
+        function (value, key) {
+          params.append(key, value);
+        }
+      );
+
+      return params;
+    }
+
+    if (typeof input === "object") {
+      Object.keys(input).forEach(function (key) {
+        const value = input[key];
+
+        if (
+          value === undefined ||
+          value === null ||
+          value === ""
+        ) {
+          return;
+        }
+
+        if (Array.isArray(value)) {
+          value.forEach(function (item) {
+            if (item !== undefined && item !== null) {
+              params.append(key, String(item));
+            }
+          });
+
+          return;
+        }
+
+        params.set(key, String(value));
+      });
+    }
+
+    return params;
+  }
+
+  function buildRouteHash(page, params) {
+    const selected = normalizePage(page);
+    const query = normalizeQueryParams(params).toString();
+
+    return "#" + selected + (query ? "?" + query : "");
+  }
+
+  function getCurrentRouteSignature() {
+    return String(window.location.hash || "#home");
   }
 
   function normalizeList(value) {
@@ -577,19 +724,25 @@
     return found;
   }
 
+  function getNavigationPage(element) {
+    if (!element) return "home";
+
+    const destination =
+      element.dataset.navigate ||
+      element.dataset.pageLink ||
+      element.dataset.page ||
+      element.getAttribute("href") ||
+      "";
+
+    return parseRoute(destination).page;
+  }
+
   function updateNavigationControls(page) {
     getElements(
       "[data-navigate],[data-page-link],.nav-link"
     ).forEach(function (element) {
-      const destination =
-        element.dataset.navigate ||
-        element.dataset.pageLink ||
-        element.dataset.page ||
-        (element.getAttribute("href") || "")
-          .replace(/^#\/?/, "");
-
       const active =
-        normalizePage(destination) === page;
+        getNavigationPage(element) === page;
 
       element.classList.toggle("active", active);
       element.classList.toggle("is-active", active);
@@ -654,7 +807,13 @@
 
     const artwork = getArtwork(track);
 
-    if (artwork) image.src = artwork;
+    if (artwork) {
+      if (ui && typeof ui.setSafeImage === "function") {
+        ui.setSafeImage(image, artwork);
+      } else {
+        image.src = artwork;
+      }
+    }
 
     image.onerror = function () {
       image.onerror = null;
@@ -984,6 +1143,27 @@
      EXPLORE
      ========================================================= */
 
+  function getExploreFilters() {
+    const params = state.routeParams || {};
+
+    const filters = {};
+
+    [
+      "genre",
+      "country",
+      "language",
+      "mood",
+      "region",
+      "type"
+    ].forEach(function (key) {
+      if (params[key]) {
+        filters[key] = params[key];
+      }
+    });
+
+    return filters;
+  }
+
   async function loadExplore() {
     const container = findFirstElement([
       "#explore-tracks",
@@ -999,7 +1179,10 @@
       }
 
       try {
-        const tracks = await callDiscovery("getTracks");
+        const tracks = await callDiscovery(
+          "getTracks",
+          getExploreFilters()
+        );
 
         renderTracks(container, tracks, {
           showLike: true,
@@ -1387,6 +1570,59 @@
     });
   }
 
+  /*
+   * Apply search query from route parameters.
+   * Example: #search?q=burna%20boy
+   */
+
+  async function loadSearchFromRoute() {
+    const params = state.routeParams || {};
+
+    const query = String(
+      params.q ||
+      params.query ||
+      ""
+    ).trim();
+
+    if (!query) {
+      return loadPageWithoutRouteSearch();
+    }
+
+    const input = findFirstElement([
+      "#search-input",
+      "#music-search"
+    ]);
+
+    if (input) {
+      input.value = query;
+    }
+
+    const filters = {};
+
+    ["type", "genre", "country", "language"].forEach(
+      function (key) {
+        if (params[key]) {
+          filters[key] = params[key];
+        }
+      }
+    );
+
+    return performSearch(query, filters);
+  }
+
+  function loadPageWithoutRouteSearch() {
+    const input = findFirstElement([
+      "#search-input",
+      "#music-search"
+    ]);
+
+    if (input && input.value.trim()) {
+      return performSearch(input.value);
+    }
+
+    return true;
+  }
+
   /* =========================================================
      LIBRARY
      ========================================================= */
@@ -1676,16 +1912,8 @@
       case "explore":
         return loadExplore();
 
-      case "search": {
-        const input = findFirstElement([
-          "#search-input",
-          "#music-search"
-        ]);
-
-        return input && input.value.trim()
-          ? performSearch(input.value)
-          : true;
-      }
+      case "search":
+        return loadSearchFromRoute();
 
       case "library":
         return loadLibrary();
@@ -1710,10 +1938,44 @@
 
   async function navigate(page, options) {
     const settings = options || {};
-    const selected = normalizePage(page);
+
+    /*
+     * A caller may pass:
+     * navigate("explore?genre=afrobeats")
+     * navigate("explore", { query: { genre: "afrobeats" } })
+     * navigate("search", { params: { q: "Burna Boy" } })
+     */
+
+    const parsed = parseRoute(page);
+
+    const selected = parsed.page;
+
+    let params = parsed.params;
+
+    if (settings.query !== undefined) {
+      params = normalizeQueryParams(settings.query);
+    } else if (settings.params !== undefined) {
+      params = normalizeQueryParams(settings.params);
+    } else if (settings.preserveParams) {
+      params = normalizeQueryParams(state.routeParams);
+    }
+
+    const nextParams = paramsToObject(params);
+
+    const nextHash = buildRouteHash(selected, params);
+
+    const currentHash = getCurrentRouteSignature();
+
+    const samePage =
+      selected === state.currentPage;
+
+    const sameParams =
+      JSON.stringify(nextParams) ===
+      JSON.stringify(state.routeParams || {});
 
     if (
-      selected === state.currentPage &&
+      samePage &&
+      sameParams &&
       !settings.force
     ) {
       return {
@@ -1727,6 +1989,7 @@
 
     state.lastPage = previous;
     state.currentPage = selected;
+    state.routeParams = nextParams;
 
     const found = setPageVisibility(selected);
 
@@ -1735,21 +1998,39 @@
     if (settings.updateHistory !== false) {
       try {
         const url = new URL(window.location.href);
-        url.hash = selected;
 
-        window.history.pushState(
-          { resonaPage: selected },
-          "",
-          url
-        );
+        url.hash = nextHash;
+
+        if (settings.replaceHistory) {
+          window.history.replaceState(
+            {
+              resonaPage: selected,
+              resonaParams: nextParams
+            },
+            "",
+            url
+          );
+        } else if (currentHash !== nextHash) {
+          window.history.pushState(
+            {
+              resonaPage: selected,
+              resonaParams: nextParams
+            },
+            "",
+            url
+          );
+        }
       } catch (error) {
         recordError(error, "navigation-history");
       }
     }
 
+    state.lastRouteSignature = nextHash;
+
     emitAppEvent("page:changed", {
       previous: previous,
-      current: selected
+      current: selected,
+      params: nextParams
     });
 
     announce("Opened " + selected + " page.");
@@ -1767,11 +2048,23 @@
     return {
       success: true,
       page: selected,
+      params: nextParams,
       elementFound: found
     };
   }
 
   function handleNavigationClick(event) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
     const target = getEventElement(event);
 
     if (!target || !target.closest) return;
@@ -1782,31 +2075,64 @@
 
     if (!link) return;
 
+    if (
+      link.target === "_blank" ||
+      link.hasAttribute("download")
+    ) {
+      return;
+    }
+
     const destination =
       link.dataset.navigate ||
       link.dataset.pageLink ||
       link.dataset.page ||
-      (link.getAttribute("href") || "")
-        .replace(/^#\/?/, "");
+      link.getAttribute("href") ||
+      "";
 
-    const selected = String(destination || "")
-      .trim()
-      .toLowerCase()
-      .replace(/_/g, "-");
+    const parsed = parseRoute(destination);
 
-    if (!VALID_PAGES.has(selected)) return;
+    if (!VALID_PAGES.has(parsed.page)) return;
 
     event.preventDefault();
-    navigate(selected);
+
+    navigate(parsed.page, {
+      params: parsed.params
+    });
   }
 
-  function handlePopState() {
-    const page = normalizePage(
-      String(window.location.hash || "")
-        .replace(/^#\/?/, "")
-    );
+  /*
+   * Browser Back and Forward.
+   */
 
-    navigate(page, {
+  function handlePopState() {
+    const parsed = parseRoute(window.location.hash);
+
+    navigate(parsed.page, {
+      params: parsed.params,
+      updateHistory: false,
+      force: true
+    });
+  }
+
+  /*
+   * Hash changes from shell-bridge.js and direct links.
+   *
+   * The route signature check prevents the browser's
+   * popstate + hashchange pair from loading the same route
+   * twice.
+   */
+
+  function handleHashChange() {
+    const signature = getCurrentRouteSignature();
+
+    if (signature === state.lastRouteSignature) {
+      return;
+    }
+
+    const parsed = parseRoute(signature);
+
+    navigate(parsed.page, {
+      params: parsed.params,
       updateHistory: false,
       force: true
     });
@@ -1815,6 +2141,7 @@
   function bindNavigation() {
     addHandler(document, "click", handleNavigationClick);
     addHandler(window, "popstate", handlePopState);
+    addHandler(window, "hashchange", handleHashChange);
   }
 
   /* =========================================================
@@ -1881,7 +2208,11 @@
 
     if (cover) {
       if (artwork) {
-        cover.src = artwork;
+        if (ui && typeof ui.setSafeImage === "function") {
+          ui.setSafeImage(cover, artwork);
+        } else {
+          cover.src = artwork;
+        }
       } else {
         cover.removeAttribute("src");
       }
@@ -2835,19 +3166,15 @@
   }
 
   /* =========================================================
-     INITIAL PAGE
+     INITIAL ROUTE
      ========================================================= */
 
-  function getInitialPage() {
-    const hash = String(window.location.hash || "")
-      .replace(/^#\/?/, "")
-      .trim()
-      .toLowerCase()
-      .replace(/_/g, "-");
+  function getInitialRoute() {
+    return parseRoute(window.location.hash);
+  }
 
-    return VALID_PAGES.has(hash)
-      ? hash
-      : "home";
+  function getInitialPage() {
+    return getInitialRoute().page;
   }
 
   /* =========================================================
@@ -2910,13 +3237,19 @@
 
       state.initialized = true;
 
+      const initialRoute = getInitialRoute();
+
       await navigate(
-        getInitialPage(),
+        initialRoute.page,
         {
+          params: initialRoute.params,
           updateHistory: false,
           force: true
         }
       );
+
+      state.lastRouteSignature =
+        getCurrentRouteSignature();
 
       const current = getPlayerState();
 
@@ -2934,7 +3267,8 @@
 
       emitAppEvent("ready", {
         version: VERSION,
-        page: state.currentPage
+        page: state.currentPage,
+        params: state.routeParams
       });
 
       log("Initialized successfully. Version:", VERSION);
@@ -3000,6 +3334,7 @@
       initializing: state.initializing,
       currentPage: state.currentPage,
       lastPage: state.lastPage,
+      routeParams: Object.assign({}, state.routeParams),
       currentTrack: state.currentTrack,
       activeSearch: state.activeSearch,
       searchRequestId: state.searchRequestId,
@@ -3026,6 +3361,10 @@
     navigate: navigate,
     getCurrentPage: function () {
       return state.currentPage;
+    },
+
+    getRouteParams: function () {
+      return Object.assign({}, state.routeParams);
     },
 
     loadPage: loadPage,
