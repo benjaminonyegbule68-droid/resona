@@ -1,6 +1,7 @@
 /* ============================================================
    RESONA — APPLICATION CORE
    Complete replacement: js/app.js
+   Navigation and event handling corrected.
    Compatible with the supplied Resona HTML shell.
    ============================================================ */
 
@@ -334,7 +335,6 @@
           input.rights_confirmed === true,
 
         explicit: input.explicit === true,
-
         featured: input.featured === true,
 
         verifiedArtist:
@@ -535,7 +535,6 @@
       Utils.write("liked_tracks", []);
 
       Toast.show("Liked tracks cleared.");
-
       LibraryPage.render();
     },
 
@@ -544,7 +543,6 @@
       Utils.write("history", []);
 
       Toast.show("Listening history cleared.");
-
       LibraryPage.render();
     },
 
@@ -562,7 +560,6 @@
       );
 
       const url = URL.createObjectURL(blob);
-
       const link = document.createElement("a");
 
       link.href = url;
@@ -572,20 +569,14 @@
       link.click();
       link.remove();
 
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
 
       Toast.show("Your library export is ready.");
     }
   };
 
   /* ==========================================================
-     7. NAVIGATION
-     Supports:
-     data-navigate
-     data-page-link
-     data-page-target
-     data-page
-     href="#page"
+     7. NAVIGATION — CORRECTED
      ========================================================== */
 
   const Navigation = {
@@ -600,27 +591,60 @@
       "settings"
     ],
 
+    normalize(page) {
+      return String(page || "")
+        .trim()
+        .toLowerCase()
+        .replace(/^#\/?/, "")
+        .split("?")[0]
+        .replace(/_/g, "-");
+    },
+
     getDestination(element) {
       if (!element) return "";
 
-      return String(
+      const value =
         element.dataset.navigate ||
         element.dataset.pageLink ||
         element.dataset.pageTarget ||
-        element.dataset.page ||
-        element.getAttribute("href")?.replace(/^#\/?/, "") ||
-        ""
-      ).trim().toLowerCase().replace(/_/g, "-");
+        (
+          element.matches(".page")
+            ? ""
+            : element.dataset.page
+        ) ||
+        element.getAttribute("href") ||
+        "";
+
+      return this.normalize(value);
     },
 
-    show(page) {
-      const destination = String(page || "home")
-        .trim()
-        .toLowerCase()
-        .replace(/_/g, "-");
+    pageFromHash() {
+      const page = this.normalize(
+        window.location.hash
+      );
+
+      return this.pages.includes(page) ? page : "";
+    },
+
+    updateHash(page) {
+      const hash = "#" + page;
+
+      if (window.location.hash !== hash) {
+        window.history.replaceState(
+          null,
+          "",
+          window.location.pathname +
+          window.location.search +
+          hash
+        );
+      }
+    },
+
+    show(page, options = {}) {
+      const destination = this.normalize(page);
 
       if (!this.pages.includes(destination)) {
-        Toast.show("That page is not available.");
+        console.warn("Invalid Resona page:", destination);
         return false;
       }
 
@@ -629,30 +653,25 @@
       );
 
       if (!target) {
-        console.error("Resona page not found:", destination);
+        console.error(
+          "Resona page element not found:",
+          destination
+        );
         return false;
       }
-
-      Utils.$$("[data-page]").forEach(element => {
-        if (element.matches(".page")) {
-          element.hidden = element.dataset.page !== destination;
-          element.setAttribute(
-            "aria-hidden",
-            String(element.hidden)
-          );
-        }
-      });
 
       this.pages.forEach(name => {
         const element = Utils.$("#" + name + "-page");
 
-        if (element) {
-          element.hidden = name !== destination;
-          element.setAttribute(
-            "aria-hidden",
-            String(name !== destination)
-          );
-        }
+        if (!element) return;
+
+        const active = name === destination;
+
+        element.hidden = !active;
+        element.setAttribute(
+          "aria-hidden",
+          String(!active)
+        );
       });
 
       state.currentPage = destination;
@@ -660,7 +679,11 @@
       Utils.write("last_page", destination);
 
       Utils.$$(
-        "[data-navigate], [data-page-link], [data-page-target], [data-page], .nav-link, .nav-button"
+        "[data-navigate], " +
+        "[data-page-link], " +
+        "[data-page-target], " +
+        ".nav-link, " +
+        ".nav-button"
       ).forEach(element => {
         const active =
           this.getDestination(element) === destination;
@@ -674,6 +697,10 @@
           element.removeAttribute("aria-current");
         }
       });
+
+      if (options.updateHash !== false) {
+        this.updateHash(destination);
+      }
 
       this.render(destination);
 
@@ -714,6 +741,19 @@
         case "playlists":
           EntityPages.playlists();
           break;
+      }
+    },
+
+    handleHashChange() {
+      const page = this.pageFromHash();
+
+      if (!page) {
+        this.show("home");
+        return;
+      }
+
+      if (page !== state.currentPage) {
+        this.show(page, { updateHash: false });
       }
     }
   };
@@ -935,14 +975,19 @@
         );
       }
 
-      const tracks = type === "artist" || type === "album" || type === "playlist"
-        ? []
-        : results;
+      const tracks =
+        type === "artist" ||
+        type === "album" ||
+        type === "playlist"
+          ? []
+          : results;
 
       TrackUI.render(
         Utils.$("#search-results"),
         tracks,
-        term ? "No matching tracks found." : "Start typing to discover music."
+        term
+          ? "No matching tracks found."
+          : "Start typing to discover music."
       );
 
       const artistResults = term
@@ -971,19 +1016,25 @@
 
       if (artistContainer) {
         artistContainer.innerHTML = artistResults.length
-          ? artistResults.map(item => TrackUI.entity(item, "Artist")).join("")
+          ? artistResults.map(item =>
+              TrackUI.entity(item, "Artist")
+            ).join("")
           : "";
       }
 
       if (albumContainer) {
         albumContainer.innerHTML = albumResults.length
-          ? albumResults.map(item => TrackUI.entity(item, "Album")).join("")
+          ? albumResults.map(item =>
+              TrackUI.entity(item, "Album")
+            ).join("")
           : "";
       }
 
       if (playlistContainer) {
         playlistContainer.innerHTML = playlistResults.length
-          ? playlistResults.map(item => TrackUI.entity(item, "Playlist")).join("")
+          ? playlistResults.map(item =>
+              TrackUI.entity(item, "Playlist")
+            ).join("")
           : "";
       }
 
@@ -1342,9 +1393,7 @@
         mini.hidden = !track;
       }
 
-      if (!track) {
-        return;
-      }
+      if (!track) return;
 
       const values = {
         "#mini-player-title": track.title,
@@ -1405,7 +1454,6 @@
       if (!element) return;
 
       element.hidden = false;
-
       element.setAttribute("aria-hidden", "false");
 
       state.playerExpanded = true;
@@ -1419,7 +1467,6 @@
       if (!element) return;
 
       element.hidden = true;
-
       element.setAttribute("aria-hidden", "true");
 
       state.playerExpanded = false;
@@ -1498,21 +1545,29 @@
   };
 
   /* ==========================================================
-     17. ACTION HANDLING
+     17. ACTION HANDLING — CORRECTED
      ========================================================== */
 
   const Actions = {
     handle(event) {
       const target = event.target instanceof Element
         ? event.target
-        : event.target.parentElement;
+        : event.target?.parentElement;
 
       if (!target) return;
 
-      /* Navigation */
+      /*
+       * Navigation only recognises actual navigation controls.
+       * Page sections carrying data-page are deliberately excluded.
+       */
 
       const navigation = target.closest(
-        "[data-navigate], [data-page-link], [data-page-target], [data-page], a[href^='#']"
+        "[data-navigate], " +
+        "[data-page-link], " +
+        "[data-page-target], " +
+        ".nav-link, " +
+        ".nav-button, " +
+        "a[href^='#']"
       );
 
       if (navigation) {
@@ -1521,7 +1576,9 @@
 
         if (Navigation.pages.includes(destination)) {
           event.preventDefault();
+
           Navigation.show(destination);
+
           return;
         }
       }
@@ -1532,12 +1589,12 @@
 
       if (trackButton) {
         const action = trackButton.dataset.action;
-        const id = trackButton.dataset.trackId;
+        const trackId = trackButton.dataset.trackId;
 
         if (action === "play") {
           event.preventDefault();
 
-          Player.playTrack(id, state.tracks);
+          Player.playTrack(trackId, state.tracks);
 
           return;
         }
@@ -1545,7 +1602,7 @@
         if (action === "like") {
           event.preventDefault();
 
-          const liked = Library.toggleLike(id);
+          const liked = Library.toggleLike(trackId);
 
           Toast.show(
             liked
@@ -1561,7 +1618,7 @@
         if (action === "save") {
           event.preventDefault();
 
-          const saved = Library.toggleSaved(id);
+          const saved = Library.toggleSaved(trackId);
 
           Toast.show(
             saved
@@ -1575,46 +1632,49 @@
         }
       }
 
-      /* Player buttons */
+      /* Player controls */
 
-      const id = target.closest(
-        "#mini-player-toggle, #player-toggle, " +
-        "#mini-player-next, #player-next, " +
-        "#mini-player-previous, #player-previous, " +
-        "#mini-player-open, #now-playing-close"
-      )?.id;
+      const playerButton = target.closest(
+        "#mini-player-toggle, " +
+        "#player-toggle, " +
+        "#mini-player-next, " +
+        "#player-next, " +
+        "#mini-player-previous, " +
+        "#player-previous, " +
+        "#mini-player-open, " +
+        "#now-playing-close"
+      );
 
-      switch (id) {
-        case "mini-player-toggle":
-        case "player-toggle":
-          event.preventDefault();
-          Player.toggle();
-          return;
+      if (playerButton) {
+        event.preventDefault();
 
-        case "mini-player-next":
-        case "player-next":
-          event.preventDefault();
-          Player.next();
-          return;
+        switch (playerButton.id) {
+          case "mini-player-toggle":
+          case "player-toggle":
+            Player.toggle();
+            return;
 
-        case "mini-player-previous":
-        case "player-previous":
-          event.preventDefault();
-          Player.previous();
-          return;
+          case "mini-player-next":
+          case "player-next":
+            Player.next();
+            return;
 
-        case "mini-player-open":
-          event.preventDefault();
-          NowPlaying.open();
-          return;
+          case "mini-player-previous":
+          case "player-previous":
+            Player.previous();
+            return;
 
-        case "now-playing-close":
-          event.preventDefault();
-          NowPlaying.close();
-          return;
+          case "mini-player-open":
+            NowPlaying.open();
+            return;
+
+          case "now-playing-close":
+            NowPlaying.close();
+            return;
+        }
       }
 
-      /* Other actions */
+      /* Other application actions */
 
       const resonaAction = target.closest(
         "[data-resona-action]"
@@ -1643,7 +1703,9 @@
             state.shuffle = !state.shuffle;
 
             Toast.show(
-              state.shuffle ? "Shuffle enabled." : "Shuffle disabled."
+              state.shuffle
+                ? "Shuffle enabled."
+                : "Shuffle disabled."
             );
             break;
 
@@ -1651,26 +1713,33 @@
             state.repeat = !state.repeat;
 
             Toast.show(
-              state.repeat ? "Repeat enabled." : "Repeat disabled."
+              state.repeat
+                ? "Repeat enabled."
+                : "Repeat disabled."
             );
             break;
         }
+
+        return;
       }
 
-      /* Export */
+      /* Library export */
 
       if (
         target.closest("#export-library-button") ||
         target.closest("#export-library-button-settings")
       ) {
         event.preventDefault();
+
         Library.export();
+
+        return;
       }
     }
   };
 
   /* ==========================================================
-     18. EVENT INITIALIZATION
+     18. EVENT INITIALIZATION — CORRECTED
      ========================================================== */
 
   function bindEvents() {
@@ -1680,8 +1749,16 @@
 
     document.body.dataset.resonaEventsBound = "true";
 
+    /* Global click handling */
+
     document.addEventListener("click", event => {
       Actions.handle(event);
+    });
+
+    /* Browser back and forward navigation */
+
+    window.addEventListener("hashchange", () => {
+      Navigation.handleHashChange();
     });
 
     /* Main search */
@@ -1730,7 +1807,7 @@
       });
     });
 
-    /* Progress bar */
+    /* Player progress */
 
     const progress = Utils.$("#player-progress-track");
 
@@ -1777,7 +1854,7 @@
   }
 
   /* ==========================================================
-     19. INITIALIZATION
+     19. INITIALIZATION — CORRECTED
      ========================================================== */
 
   async function init() {
@@ -1791,15 +1868,26 @@
 
     await API.loadCatalogue();
 
-    const savedPage = Utils.read(
-      "last_page",
-      "home"
+    /*
+     * Priority:
+     * 1. A valid page in the URL.
+     * 2. The user's previously saved page.
+     * 3. Home.
+     */
+
+    const hashPage = Navigation.pageFromHash();
+
+    const savedPage = Navigation.normalize(
+      Utils.read("last_page", "home")
     );
 
     const initialPage =
-      Navigation.pages.includes(savedPage)
-        ? savedPage
-        : "home";
+      hashPage ||
+      (
+        Navigation.pages.includes(savedPage)
+          ? savedPage
+          : "home"
+      );
 
     Navigation.show(initialPage);
 
@@ -1823,6 +1911,7 @@
     }
 
     console.info("Resona initialized.");
+    console.info("Current page:", state.currentPage);
     console.info("Catalogue tracks:", state.tracks.length);
   }
 
@@ -1860,8 +1949,8 @@
 
   /* Legacy compatibility */
 
-  window.showPage = (page, button) => {
-    Navigation.show(page, button);
+  window.showPage = page => {
+    Navigation.show(page);
   };
 
   window.togglePlay = () => Player.toggle();
