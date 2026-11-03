@@ -1,3501 +1,1886 @@
-/* =========================================================
-   RESONA — APPLICATION ENTRY POINT
-   File: js/app.js
-   Version: 2.4.0
+/* ============================================================
+   RESONA — APPLICATION CORE
+   Complete replacement: js/app.js
+   Compatible with the supplied Resona HTML shell.
+   ============================================================ */
 
-   Coordinates:
-   api.js
-   player.js
-   discovery.js
-   search.js
-   library.js
-   ui.js
-
-   Designed for the Resona SPA and persistent shell player.
-========================================================= */
-
-(function (window, document) {
+(() => {
   "use strict";
 
-  if (window.ResonaApp) {
-    console.warn("[Resona App] Already initialized.");
-    return;
-  }
+  /* ==========================================================
+     1. CONFIGURATION
+     ========================================================== */
 
-  const VERSION = "2.4.0";
-
-  const api = window.ResonaAPI || null;
-  const player = window.ResonaPlayer || null;
-  const discovery = window.ResonaDiscovery || null;
-  const search = window.ResonaSearch || null;
-  const library = window.ResonaLibrary || null;
-  const ui = window.ResonaUI || null;
-
-  const MODULES = [
-    "ResonaAPI",
-    "ResonaPlayer",
-    "ResonaDiscovery",
-    "ResonaSearch",
-    "ResonaLibrary",
-    "ResonaUI"
-  ];
-
-  const VALID_PAGES = new Set([
-    "home",
-    "explore",
-    "search",
-    "library",
-    "artists",
-    "albums",
-    "playlists",
-    "settings"
-  ]);
-
-  const state = {
-    initialized: false,
-    initializing: false,
-
-    currentPage: "home",
-    lastPage: "home",
-
-    routeParams: {},
-
-    currentTrack: null,
-    activeSearch: "",
-    searchTimer: null,
-    searchRequestId: 0,
-
-    lastRouteSignature: "",
-
-    errors: [],
-    cleanup: [],
-    unsubscribers: []
+  const DEFAULT_CONFIG = {
+    apiBase: "",
+    enableAudioPlayback: true,
+    storagePrefix: "resona_",
+    maxHistory: 100,
+    maxQueue: 500
   };
 
-  /* =========================================================
-     UTILITIES
-  ========================================================= */
-
-  function log() {
-    console.log.apply(
-      console,
-      ["[Resona App]"].concat(Array.from(arguments))
-    );
-  }
-
-  function warn() {
-    console.warn.apply(
-      console,
-      ["[Resona App]"].concat(Array.from(arguments))
-    );
-  }
-
-  function recordError(error, context) {
-    const entry = {
-      message: error && error.message
-        ? error.message
-        : String(error),
-
-      context: context || "application",
-      timestamp: new Date().toISOString()
-    };
-
-    state.errors.push(entry);
-
-    if (state.errors.length > 50) {
-      state.errors.shift();
-    }
-
-    console.error(
-      "[Resona App]",
-      entry.context,
-      error
-    );
-
-    return entry;
-  }
-
-  function safeCall(callback, fallback) {
-    try {
-      return typeof callback === "function"
-        ? callback()
-        : fallback;
-    } catch (error) {
-      recordError(error, "safe-call");
-      return fallback;
-    }
-  }
-
-  function getElement(selector, root) {
-    const scope = root || document;
-
-    try {
-      return scope.querySelector(selector);
-    } catch (error) {
-      warn("Invalid selector:", selector);
-      return null;
-    }
-  }
-
-  function getElements(selector, root) {
-    const scope = root || document;
-
-    try {
-      return Array.from(scope.querySelectorAll(selector));
-    } catch (error) {
-      warn("Invalid selector:", selector);
-      return [];
-    }
-  }
-
-  function findFirstElement(selectors, root) {
-    for (const selector of selectors) {
-      const element = getElement(selector, root);
-      if (element) return element;
-    }
-
-    return null;
-  }
-
-  function addHandler(target, eventName, callback, options) {
-    if (!target || !target.addEventListener) {
-      return function () {};
-    }
-
-    target.addEventListener(
-      eventName,
-      callback,
-      options
-    );
-
-    let active = true;
-
-    const cleanup = function () {
-      if (!active) return;
-
-      active = false;
-
-      target.removeEventListener(
-        eventName,
-        callback,
-        options
-      );
-
-      const index = state.cleanup.indexOf(cleanup);
-
-      if (index !== -1) {
-        state.cleanup.splice(index, 1);
-      }
-    };
-
-    state.cleanup.push(cleanup);
-
-    return cleanup;
-  }
-
-  function addUnsubscriber(callback) {
-    if (typeof callback === "function") {
-      state.unsubscribers.push(callback);
-    }
-  }
-
-  function emitAppEvent(name, detail) {
-    try {
-      window.dispatchEvent(
-        new CustomEvent(
-          "resona:app:" + name,
-          {
-            detail: detail === undefined ? null : detail
-          }
-        )
-      );
-    } catch (error) {
-      warn("Event dispatch failed:", name, error);
-    }
-  }
-
-  function notify(message, type) {
-    const method = type || "info";
-
-    if (ui && typeof ui[method] === "function") {
-      safeCall(function () {
-        ui[method](message);
-      });
-
-      return;
-    }
-
-    if (ui && typeof ui.toast === "function") {
-      safeCall(function () {
-        ui.toast(message);
-      });
-
-      return;
-    }
-
-    log(message);
-  }
-
-  function announce(message) {
-    if (ui && typeof ui.announce === "function") {
-      safeCall(function () {
-        ui.announce(message);
-      });
-    }
-  }
-
-  function normalizePage(page) {
-    const value = String(page || "")
-      .trim()
-      .toLowerCase()
-      .replace(/_/g, "-");
-
-    return VALID_PAGES.has(value)
-      ? value
-      : "home";
-  }
-
-  /* =========================================================
-     ROUTING
-
-     Supported:
-     #home
-     #/home
-     #explore?genre=afrobeats
-     #search?q=burna%20boy
-     #/search?q=burna%20boy
-
-     Unknown routes are now identified instead of silently
-     being treated as valid Home routes.
-  ========================================================= */
-
-  function parseRoute(input) {
-    let raw = String(input || "").trim();
-
-    if (!raw) {
-      return {
-        page: "home",
-        params: new URLSearchParams(),
-        valid: true
-      };
-    }
-
-    const hashIndex = raw.indexOf("#");
-
-    if (hashIndex !== -1) {
-      raw = raw.slice(hashIndex + 1);
-    }
-
-    raw = raw.replace(/^\/+/, "");
-
-    let pagePart = raw;
-    let queryPart = "";
-
-    const questionIndex = raw.indexOf("?");
-
-    if (questionIndex !== -1) {
-      pagePart = raw.slice(0, questionIndex);
-      queryPart = raw.slice(questionIndex + 1);
-    }
-
-    pagePart = pagePart
-      .trim()
-      .toLowerCase()
-      .replace(/_/g, "-");
-
-    const valid = VALID_PAGES.has(pagePart);
-
-    let params;
-
-    try {
-      params = new URLSearchParams(queryPart);
-    } catch (error) {
-      params = new URLSearchParams();
-      recordError(error, "route-query-parse");
-    }
-
-    return {
-      page: valid ? pagePart : "home",
-      params: params,
-      valid: valid
-    };
-  }
-
-  function paramsToObject(params) {
-    const result = {};
-
-    if (!params) return result;
-
-    params.forEach(function (value, key) {
-      if (
-        Object.prototype.hasOwnProperty.call(result, key)
-      ) {
-        if (!Array.isArray(result[key])) {
-          result[key] = [result[key]];
-        }
-
-        result[key].push(value);
-      } else {
-        result[key] = value;
-      }
-    });
-
-    return result;
-  }
-
-  function normalizeQueryParams(input) {
-    const params = new URLSearchParams();
-
-    if (!input) return params;
-
-    if (
-      typeof URLSearchParams !== "undefined" &&
-      input instanceof URLSearchParams
-    ) {
-      input.forEach(function (value, key) {
-        params.append(key, value);
-      });
-
-      return params;
-    }
-
-    if (typeof input === "string") {
-      const clean = input.replace(/^\?/, "");
-
-      new URLSearchParams(clean).forEach(
-        function (value, key) {
-          params.append(key, value);
-        }
-      );
-
-      return params;
-    }
-
-    if (typeof input === "object") {
-      Object.keys(input).forEach(function (key) {
-        const value = input[key];
-
-        if (
-          value === undefined ||
-          value === null ||
-          value === ""
-        ) {
-          return;
-        }
-
-        if (Array.isArray(value)) {
-          value.forEach(function (item) {
-            if (item !== undefined && item !== null) {
-              params.append(key, String(item));
-            }
-          });
-
-          return;
-        }
-
-        params.set(key, String(value));
-      });
-    }
-
-    return params;
-  }
-
-  function buildRouteHash(page, params) {
-    const selected = normalizePage(page);
-    const query = normalizeQueryParams(params).toString();
-
-    return "#" + selected + (query ? "?" + query : "");
-  }
-
-  function getCurrentRouteSignature() {
-    const parsed = parseRoute(window.location.hash);
-
-    return buildRouteHash(
-      parsed.page,
-      parsed.params
-    );
-  }
-
-  function normalizeList(value) {
-    if (Array.isArray(value)) return value;
-
-    if (!value || typeof value !== "object") {
-      return [];
-    }
-
-    const keys = [
-      "items",
-      "results",
-      "tracks",
-      "artists",
-      "albums",
-      "playlists"
-    ];
-
-    for (const key of keys) {
-      if (Array.isArray(value[key])) {
-        return value[key];
-      }
-    }
-
-    if (Array.isArray(value.data)) {
-      return value.data;
-    }
-
-    if (
-      value.data &&
-      typeof value.data === "object"
-    ) {
-      return normalizeList(value.data);
-    }
-
-    return [];
-  }
-
-  function getEventElement(event) {
-    let target = event && event.target;
-
-    if (!target) return null;
-
-    if (target.nodeType !== 1) {
-      target = target.parentElement;
-    }
-
-    return target || null;
-  }
-
-  function unwrapResult(value) {
-    let result = value;
-
-    for (let i = 0; i < 5; i++) {
-      if (
-        !result ||
-        typeof result !== "object" ||
-        Array.isArray(result)
-      ) {
-        break;
-      }
-
-      if (
-        result.success === false ||
-        result.error
-      ) {
-        throw new Error(
-          result.message ||
-          result.error ||
-          "The requested operation failed."
-        );
-      }
-
-      if (result.data !== undefined) {
-        result = result.data;
-        continue;
-      }
-
-      break;
-    }
-
-    return result;
-  }
-
-  /* =========================================================
-     TRACK UTILITIES
-  ========================================================= */
-
-  function getTrackId(track) {
-    if (!track || typeof track !== "object") {
-      return "";
-    }
-
-    if (ui && typeof ui.getTrackId === "function") {
-      const result = safeCall(
-        function () {
-          return ui.getTrackId(track);
-        },
-        ""
-      );
-
-      if (result) return String(result).trim();
-    }
-
-    return String(
-      track.id ||
-      track.track_id ||
-      track.trackId ||
-      track.uuid ||
-      ""
-    ).trim();
-  }
-
-  function getTrackTitle(track) {
-    if (!track) return "Untitled track";
-
-    if (ui && typeof ui.getTrackTitle === "function") {
-      const result = safeCall(
-        function () {
-          return ui.getTrackTitle(track);
-        },
-        ""
-      );
-
-      if (result) return String(result);
-    }
-
-    return String(
-      track.title ||
-      track.name ||
-      "Untitled track"
-    );
-  }
-
-  function getArtistName(track) {
-    if (!track) return "Unknown artist";
-
-    if (ui && typeof ui.getArtistName === "function") {
-      const result = safeCall(
-        function () {
-          return ui.getArtistName(track);
-        },
-        ""
-      );
-
-      if (result) return String(result);
-    }
-
-    if (Array.isArray(track.artists)) {
-      const names = track.artists
-        .map(function (artist) {
-          return typeof artist === "string"
-            ? artist
-            : artist && artist.name
-              ? artist.name
-              : "";
-        })
-        .filter(Boolean);
-
-      return names.join(", ") || "Unknown artist";
-    }
-
-    const artist =
-      track.artistName ||
-      track.artist_name ||
-      track.artist;
-
-    if (typeof artist === "string") {
-      return artist || "Unknown artist";
-    }
-
-    if (artist && typeof artist === "object") {
-      return String(artist.name || "Unknown artist");
-    }
-
-    return "Unknown artist";
-  }
-
-  function getArtwork(track) {
-    if (!track) return "";
-
-    if (ui && typeof ui.getTrackArtwork === "function") {
-      const result = safeCall(
-        function () {
-          return ui.getTrackArtwork(track);
-        },
-        ""
-      );
-
-      if (result) return result;
-    }
-
-    return (
-      track.artwork_url ||
-      track.artwork ||
-      track.album_artwork_url ||
-      track.cover_url ||
-      track.cover ||
-      track.image_url ||
-      track.image ||
-      ""
-    );
-  }
-
-  function getTrackDuration(track) {
-    if (!track) return "0:00";
-
-    const raw =
-      track.duration_seconds ??
-      track.durationSeconds ??
-      track.duration ??
-      0;
-
-    if (
-      typeof raw === "string" &&
-      raw.includes(":")
-    ) {
-      return raw;
-    }
-
-    const seconds = Number(raw);
-
-    if (
-      ui &&
-      typeof ui.formatDuration === "function" &&
-      Number.isFinite(seconds)
-    ) {
-      return ui.formatDuration(seconds);
-    }
-
-    const safeSeconds = Number.isFinite(seconds)
-      ? Math.max(0, Math.floor(seconds))
-      : 0;
-
-    return (
-      Math.floor(safeSeconds / 60) +
-      ":" +
-      String(safeSeconds % 60).padStart(2, "0")
-    );
-  }
-
-  /* =========================================================
-     MODULE VALIDATION
-  ========================================================= */
-
-  function validateModules() {
-    const missing = MODULES.filter(function (name) {
-      return !window[name];
-    });
-
-    if (missing.length) {
-      const message =
-        "Required Resona modules are missing: " +
-        missing.join(", ");
-
-      recordError(
-        new Error(message),
-        "module-validation"
-      );
-
-      return {
-        success: false,
-        missing: missing,
-        message: message
-      };
-    }
-
-    return {
-      success: true,
-      missing: []
-    };
-  }
-
-  /* =========================================================
-     PAGE MANAGEMENT
-  ========================================================= */
-
-  function getPageElements() {
-    const ids = [
-      "home-page",
-      "explore-page",
-      "search-page",
-      "library-page",
-      "artists-page",
-      "albums-page",
-      "playlists-page",
-      "settings-page"
-    ];
-
-    const pages = [];
-
-    ids.forEach(function (id) {
-      const element = document.getElementById(id);
-
-      if (element && !pages.includes(element)) {
-        pages.push(element);
-      }
-    });
-
-    if (pages.length) return pages;
-
-    return getElements("[id$='-page']").filter(
-      function (element) {
-        return !element.closest("nav,header,footer");
-      }
-    );
-  }
-
-  function setPageVisibility(page) {
-    const selected = normalizePage(page);
-    const pages = getPageElements();
-
-    let found = false;
-
-    pages.forEach(function (element) {
-      const name = normalizePage(
-        element.dataset.page ||
-        element.id.replace(/-page$/, "")
-      );
-
-      const visible = name === selected;
-
-      element.hidden = !visible;
-
-      element.setAttribute(
-        "aria-hidden",
-        visible ? "false" : "true"
-      );
-
-      element.classList.toggle("active", visible);
-      element.classList.toggle("is-active", visible);
-
-      if (visible) found = true;
-    });
-
-    return found;
-  }
-
-  function getNavigationPage(element) {
-    if (!element) return "home";
-
-    const destination =
-      element.dataset.navigate ||
-      element.dataset.pageLink ||
-      element.dataset.page ||
-      element.getAttribute("href") ||
-      "";
-
-    return parseRoute(destination).page;
-  }
-
-  function updateNavigationControls(page) {
-    getElements(
-      "[data-navigate],[data-page-link],.nav-link"
-    ).forEach(function (element) {
-      const active = getNavigationPage(element) === page;
-
-      element.classList.toggle("active", active);
-      element.classList.toggle("is-active", active);
-
-      if (active) {
-        element.setAttribute("aria-current", "page");
-      } else {
-        element.removeAttribute("aria-current");
-      }
-    });
-  }
-
-  /* =========================================================
-     DISCOVERY
-  ========================================================= */
-
-  function callDiscovery(method, options) {
-    if (
-      !discovery ||
-      typeof discovery[method] !== "function"
-    ) {
-      return Promise.resolve([]);
-    }
-
-    try {
-      return Promise.resolve(
-        discovery[method](options)
-      ).then(unwrapResult);
-    } catch (error) {
-      return Promise.reject(error);
-    }
-  }
-
-  /* =========================================================
-     TRACK CARDS
-  ========================================================= */
-
-  function createFallbackTrackCard(track, options) {
-    const settings = options || {};
-
-    const card = document.createElement("article");
-    card.className = "resona-track-card";
-    card.dataset.trackId = getTrackId(track);
-
-    const artworkButton = document.createElement("button");
-
-    artworkButton.type = "button";
-    artworkButton.className =
-      "resona-track-card__artwork-button";
-
-    artworkButton.setAttribute(
-      "aria-label",
-      "Play " + getTrackTitle(track)
-    );
-
-    const image = document.createElement("img");
-
-    image.className = "resona-track-card__artwork";
-    image.alt = getTrackTitle(track) + " cover";
-    image.loading = "lazy";
-
-    const artwork = getArtwork(track);
-
-    if (artwork) {
-      if (ui && typeof ui.setSafeImage === "function") {
-        ui.setSafeImage(image, artwork);
-      } else {
-        image.src = artwork;
-      }
-    }
-
-    image.onerror = function () {
-      image.onerror = null;
-      image.removeAttribute("src");
-    };
-
-    artworkButton.appendChild(image);
-
-    artworkButton.addEventListener(
-      "click",
-      function () {
-        playTrack(track);
-      }
-    );
-
-    const title = document.createElement("h3");
-    title.className = "resona-track-card__title";
-    title.textContent = getTrackTitle(track);
-
-    const artist = document.createElement("p");
-    artist.className = "resona-track-card__artist";
-    artist.textContent = getArtistName(track);
-
-    const duration = document.createElement("span");
-    duration.className = "resona-track-card__duration";
-    duration.textContent = getTrackDuration(track);
-
-    card.appendChild(artworkButton);
-    card.appendChild(title);
-    card.appendChild(artist);
-    card.appendChild(duration);
-
-    if (settings.showLike !== false) {
-      const like = document.createElement("button");
-
-      like.type = "button";
-      like.className = "resona-track-card__like";
-
-      const isLiked = function () {
-        return Boolean(
-          library &&
-          typeof library.isLiked === "function" &&
-          library.isLiked(getTrackId(track))
-        );
-      };
-
-      function updateLikeButton() {
-        const liked = isLiked();
-
-        like.textContent = liked ? "♥" : "♡";
-
-        like.setAttribute(
-          "aria-pressed",
-          liked ? "true" : "false"
-        );
-
-        like.setAttribute(
-          "aria-label",
-          liked ? "Unlike track" : "Like track"
-        );
-      }
-
-      updateLikeButton();
-
-      like.addEventListener("click", function () {
-        if (
-          !library ||
-          typeof library.toggleLike !== "function"
-        ) {
-          notify("Your library is unavailable.", "error");
-          return;
-        }
-
-        try {
-          library.toggleLike(track);
-          updateLikeButton();
-        } catch (error) {
-          recordError(error, "like-track");
-          notify("Unable to update liked tracks.", "error");
-        }
-      });
-
-      card.appendChild(like);
-    }
-
-    return card;
-  }
-
-  function createTrackCard(track, options) {
-    if (
-      ui &&
-      typeof ui.renderTrackCard === "function"
-    ) {
+  const externalConfig =
+    window.RESONA_CONFIG ||
+    window.RESONA_CONFIG_DATA ||
+    window.APP_CONFIG ||
+    {};
+
+  const config = {
+    ...DEFAULT_CONFIG,
+    ...externalConfig,
+    apiBase:
+      externalConfig.apiBase ||
+      externalConfig.api?.baseUrl ||
+      externalConfig.api?.baseURL ||
+      externalConfig.backendUrl ||
+      DEFAULT_CONFIG.apiBase
+  };
+
+  /* ==========================================================
+     2. APPLICATION STATE
+     ========================================================== */
+
+  const state = {
+    currentPage: "home",
+
+    tracks: [],
+    artists: [],
+    albums: [],
+    playlists: [],
+
+    likedTracks: [],
+    savedTracks: [],
+    listeningHistory: [],
+
+    queue: [],
+    queueIndex: -1,
+
+    currentTrack: null,
+    currentAudio: null,
+
+    isPlaying: false,
+    isLoading: false,
+
+    searchQuery: "",
+    searchType: "",
+    searchGenre: "",
+    searchCountry: "",
+    searchLanguage: "",
+
+    shuffle: false,
+    repeat: false,
+
+    playerExpanded: false,
+    initialized: false
+  };
+
+  /* ==========================================================
+     3. UTILITIES
+     ========================================================== */
+
+  const Utils = {
+    $(selector, root = document) {
+      return root.querySelector(selector);
+    },
+
+    $$(selector, root = document) {
+      return Array.from(root.querySelectorAll(selector));
+    },
+
+    escape(value) {
+      return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[char]);
+    },
+
+    key(name) {
+      return config.storagePrefix + name;
+    },
+
+    read(name, fallback = []) {
       try {
-        return ui.renderTrackCard(
-          track,
-          Object.assign(
-            { onPlay: playTrack },
-            options || {}
-          )
-        );
-      } catch (error) {
-        recordError(error, "ui-track-card");
+        const value = localStorage.getItem(this.key(name));
+        return value === null ? fallback : JSON.parse(value);
+      } catch {
+        return fallback;
       }
-    }
+    },
 
-    return createFallbackTrackCard(track, options);
-  }
-
-  function renderTracks(container, tracks, options) {
-    const element = typeof container === "string"
-      ? getElement(container)
-      : container;
-
-    if (!element) return false;
-
-    const list = normalizeList(tracks);
-    const settings = options || {};
-
-    element.replaceChildren();
-
-    if (!list.length) {
-      if (ui && typeof ui.showEmpty === "function") {
-        ui.showEmpty(element, {
-          icon: settings.emptyIcon || "♫",
-          title: settings.emptyTitle || "No music available yet",
-          message:
-            settings.emptyMessage ||
-            "Try another section or check back later."
-        });
-      } else {
-        const message = document.createElement("p");
-
-        message.textContent =
-          settings.emptyMessage || "No music available yet.";
-
-        element.appendChild(message);
-      }
-
-      return true;
-    }
-
-    const fragment = document.createDocumentFragment();
-
-    list.forEach(function (track) {
-      if (!track || typeof track !== "object") return;
-
-      const card = createTrackCard(track, settings);
-
-      if (card && card.nodeType) {
-        fragment.appendChild(card);
-      }
-    });
-
-    element.appendChild(fragment);
-
-    return true;
-  }
-
-  /* =========================================================
-     HOME
-  ========================================================= */
-
-  async function loadHome() {
-    const sections = [
-      {
-        selectors: [
-          "#featured-tracks",
-          "[data-section='featured']",
-          "#home-featured"
-        ],
-        method: "getFeatured",
-        title: "Featured music"
-      },
-      {
-        selectors: [
-          "#trending-tracks",
-          "[data-section='trending']",
-          "#home-trending"
-        ],
-        method: "getTrending",
-        title: "Trending music"
-      }
-    ];
-
-    const jobs = sections.map(async function (section) {
-      const container = findFirstElement(section.selectors);
-
-      if (!container) return;
-
-      if (ui && typeof ui.showLoading === "function") {
-        ui.showLoading(container, {
-          message: "Loading " + section.title.toLowerCase() + "..."
-        });
-      }
-
+    write(name, value) {
       try {
-        const tracks = await callDiscovery(section.method);
-
-        renderTracks(container, tracks, {
-          showLike: true,
-          emptyTitle: "No " + section.title.toLowerCase() + " yet"
-        });
-      } catch (error) {
-        recordError(error, "home:" + section.method);
-
-        if (ui && typeof ui.showErrorState === "function") {
-          ui.showErrorState(container, {
-            message: "We couldn't load this section. Please try again.",
-            onAction: loadHome
-          });
-        }
-      }
-    });
-
-    const recentContainer = findFirstElement([
-      "#recently-played",
-      "[data-section='recently-played']"
-    ]);
-
-    if (recentContainer) {
-      try {
-        const recent =
-          library &&
-          typeof library.getRecentlyPlayed === "function"
-            ? library.getRecentlyPlayed(12)
-            : [];
-
-        renderTracks(recentContainer, recent, {
-          showLike: true,
-          emptyTitle: "Nothing played yet",
-          emptyMessage: "Tracks you play will appear here."
-        });
-      } catch (error) {
-        recordError(error, "home:recently-played");
-      }
-    }
-
-    await Promise.allSettled(jobs);
-
-    return true;
-  }
-
-  /* =========================================================
-     ENTITY CARDS
-  ========================================================= */
-
-  function renderSimpleEntityCards(container, items, type) {
-    if (!container) return;
-
-    const list = normalizeList(items);
-
-    container.replaceChildren();
-
-    if (!list.length) {
-      if (ui && typeof ui.showEmpty === "function") {
-        ui.showEmpty(container, {
-          icon: type === "artist" ? "♫" : "◉",
-          title: "Nothing to show yet",
-          message:
-            "This section will populate when catalogue data is available."
-        });
-      } else {
-        const message = document.createElement("p");
-        message.textContent = "Nothing to show yet.";
-        container.appendChild(message);
-      }
-
-      return;
-    }
-
-    const fragment = document.createDocumentFragment();
-
-    list.forEach(function (item) {
-      if (!item || typeof item !== "object") return;
-
-      const card = document.createElement("article");
-      card.className = "resona-entity-card";
-
-      const image = document.createElement("img");
-
-      image.loading = "lazy";
-      image.alt = String(item.name || item.title || type);
-
-      const artwork =
-        item.image ||
-        item.image_url ||
-        item.artwork ||
-        item.cover ||
-        item.cover_url ||
-        "";
-
-      if (ui && typeof ui.setSafeImage === "function") {
-        ui.setSafeImage(image, artwork);
-      } else if (artwork) {
-        image.src = artwork;
-      }
-
-      const title = document.createElement("h3");
-
-      title.textContent = String(
-        item.name || item.title || "Unknown " + type
-      );
-
-      card.appendChild(image);
-      card.appendChild(title);
-
-      if (item.description || item.bio) {
-        const description = document.createElement("p");
-
-        description.textContent = String(
-          item.description || item.bio
+        localStorage.setItem(
+          this.key(name),
+          JSON.stringify(value)
         );
-
-        card.appendChild(description);
-      }
-
-      fragment.appendChild(card);
-    });
-
-    container.appendChild(fragment);
-  }
-
-  /* =========================================================
-     EXPLORE
-  ========================================================= */
-
-  function getExploreFilters() {
-    const params = state.routeParams || {};
-
-    const filters = {};
-
-    [
-      "genre",
-      "country",
-      "language",
-      "mood",
-      "region",
-      "type"
-    ].forEach(function (key) {
-      if (params[key]) {
-        filters[key] = params[key];
-      }
-    });
-
-    return filters;
-  }
-
-  async function loadExplore() {
-    const container = findFirstElement([
-      "#explore-tracks",
-      "#explore-results",
-      "[data-section='explore-tracks']"
-    ]);
-
-    if (container) {
-      if (ui && typeof ui.showLoading === "function") {
-        ui.showLoading(container, {
-          message: "Discovering music..."
-        });
-      }
-
-      try {
-        const tracks = await callDiscovery(
-          "getTracks",
-          getExploreFilters()
-        );
-
-        renderTracks(container, tracks, {
-          showLike: true,
-          showSave: true,
-          emptyTitle: "Your discovery starts here",
-          emptyMessage:
-            "Music will appear here when catalogue data is available."
-        });
-      } catch (error) {
-        recordError(error, "explore");
-
-        if (ui && typeof ui.showErrorState === "function") {
-          ui.showErrorState(container, {
-            message: "We couldn't load Explore.",
-            onAction: loadExplore
-          });
-        }
-      }
-    }
-
-    const artistsContainer = getElement("#explore-artists");
-    const albumsContainer = getElement("#explore-albums");
-
-    if (artistsContainer) {
-      try {
-        renderSimpleEntityCards(
-          artistsContainer,
-          await callDiscovery("getArtists"),
-          "artist"
-        );
-      } catch (error) {
-        recordError(error, "explore-artists");
-      }
-    }
-
-    if (albumsContainer) {
-      try {
-        renderSimpleEntityCards(
-          albumsContainer,
-          await callDiscovery("getAlbums"),
-          "album"
-        );
-      } catch (error) {
-        recordError(error, "explore-albums");
-      }
-    }
-
-    return true;
-  }
-
-  /* =========================================================
-     SEARCH
-  ========================================================= */
-
-  function getSearchResultsContainer() {
-    if (state.currentPage === "explore") {
-      return findFirstElement([
-        "#explore-search-results",
-        "#search-results"
-      ]);
-    }
-
-    return findFirstElement([
-      "#search-results",
-      "#music-search-results",
-      "[data-section='search-results']"
-    ]);
-  }
-
-  function normalizeSearchResponse(result) {
-    let value = result;
-
-    for (let i = 0; i < 5; i++) {
-      if (!value || typeof value !== "object") break;
-
-      if (
-        Array.isArray(value.tracks) ||
-        Array.isArray(value.artists) ||
-        Array.isArray(value.albums) ||
-        Array.isArray(value.playlists)
-      ) {
-        return value;
-      }
-
-      if (Array.isArray(value.items)) {
-        return { tracks: value.items };
-      }
-
-      if (Array.isArray(value.results)) {
-        return { tracks: value.results };
-      }
-
-      if (value.data && typeof value.data === "object") {
-        value = value.data;
-        continue;
-      }
-
-      if (
-        value.results &&
-        typeof value.results === "object"
-      ) {
-        value = value.results;
-        continue;
-      }
-
-      break;
-    }
-
-    return value || {};
-  }
-
-  function readSearchFilters() {
-    const container = getElement("#search-filters");
-
-    if (!container) return {};
-
-    const filters = {};
-
-    ["type", "genre", "country", "language"].forEach(
-      function (name) {
-        const field = getElement(
-          '[name="' + name + '"]',
-          container
-        );
-
-        if (field && field.value) {
-          filters[name] = field.value;
-        }
-      }
-    );
-
-    return filters;
-  }
-
-  function updateSearchStatus(message) {
-    const status = getElement("#search-status");
-
-    if (status) {
-      status.textContent = message || "";
-    }
-  }
-
-  function renderSearchCategories(result) {
-    const normalized = normalizeSearchResponse(result);
-
-    const tracks = normalizeList(normalized.tracks || []);
-    const artists = normalizeList(normalized.artists || []);
-    const albums = normalizeList(normalized.albums || []);
-    const playlists = normalizeList(normalized.playlists || []);
-
-    const main = getSearchResultsContainer();
-
-    if (main) {
-      renderTracks(main, tracks, {
-        showLike: true,
-        showSave: true,
-        emptyTitle: "No tracks found",
-        emptyMessage:
-          "Try another song, artist, album, or genre."
-      });
-    }
-
-    const artistContainer = getElement("#search-artists");
-    const albumContainer = getElement("#search-albums");
-    const playlistContainer = getElement("#search-playlists");
-
-    if (artistContainer) {
-      renderSimpleEntityCards(
-        artistContainer,
-        artists,
-        "artist"
-      );
-    }
-
-    if (albumContainer) {
-      renderSimpleEntityCards(
-        albumContainer,
-        albums,
-        "album"
-      );
-    }
-
-    if (playlistContainer) {
-      renderPlaylistCards(
-        playlistContainer,
-        playlists
-      );
-    }
-
-    return {
-      tracks: tracks,
-      artists: artists,
-      albums: albums,
-      playlists: playlists
-    };
-  }
-
-  async function performSearch(query, options) {
-    const settings = Object.assign(
-      {},
-      readSearchFilters(),
-      options || {}
-    );
-
-    const normalizedQuery = String(query || "").trim();
-    const requestId = ++state.searchRequestId;
-
-    state.activeSearch = normalizedQuery;
-
-    const container = getSearchResultsContainer();
-
-    if (!container) {
-      return {
-        success: false,
-        message: "Search results container was not found."
-      };
-    }
-
-    if (!normalizedQuery) {
-      container.replaceChildren();
-      updateSearchStatus("");
-
-      return {
-        success: true,
-        results: []
-      };
-    }
-
-    updateSearchStatus("Searching...");
-
-    if (ui && typeof ui.showLoading === "function") {
-      ui.showLoading(container, {
-        message: "Searching Resona..."
-      });
-    }
-
-    try {
-      let result;
-
-      if (search && typeof search.search === "function") {
-        if (typeof search.setFilters === "function") {
-          search.setFilters(settings);
-        }
-
-        result = await search.search(
-          normalizedQuery,
-          settings
-        );
-      } else if (api && typeof api.search === "function") {
-        result = await api.search(
-          normalizedQuery,
-          settings
-        );
-      } else {
-        throw new Error("Search functionality is unavailable.");
-      }
-
-      if (requestId !== state.searchRequestId) {
-        return { success: false, stale: true };
-      }
-
-      result = unwrapResult(result);
-
-      const categories = renderSearchCategories(result);
-
-      const total =
-        categories.tracks.length +
-        categories.artists.length +
-        categories.albums.length +
-        categories.playlists.length;
-
-      updateSearchStatus(
-        total === 0
-          ? "No results found."
-          : total + (total === 1
-            ? " result found."
-            : " results found.")
-      );
-
-      announce(
-        total + (total === 1
-          ? " search result found."
-          : " search results found.")
-      );
-
-      return {
-        success: true,
-        results: categories.tracks,
-        categories: categories,
-        total: total,
-        raw: result
-      };
-    } catch (error) {
-      if (requestId !== state.searchRequestId) {
-        return { success: false, stale: true };
-      }
-
-      recordError(error, "search");
-      updateSearchStatus("Search failed.");
-
-      if (ui && typeof ui.showErrorState === "function") {
-        ui.showErrorState(container, {
-          message: "Search failed. Please try again.",
-          onAction: function () {
-            performSearch(normalizedQuery, settings);
-          }
-        });
-      }
-
-      return {
-        success: false,
-        error: error
-      };
-    }
-  }
-
-  function handleSearchInput(event) {
-    const input = event.currentTarget;
-
-    if (!input) return;
-
-    if (state.searchTimer) {
-      window.clearTimeout(state.searchTimer);
-    }
-
-    state.searchTimer = window.setTimeout(
-      function () {
-        state.searchTimer = null;
-        performSearch(input.value);
-      },
-      350
-    );
-  }
-
-  function bindSearchInputs() {
-    const selectors = [
-      "#search-input",
-      "#music-search",
-      "#explore-search-input"
-    ];
-
-    const inputs = [];
-
-    selectors.forEach(function (selector) {
-      const input = getElement(selector);
-
-      if (input && !inputs.includes(input)) {
-        inputs.push(input);
-      }
-    });
-
-    inputs.forEach(function (input) {
-      addHandler(input, "input", handleSearchInput);
-
-      const form = input.closest("form");
-
-      if (form) {
-        addHandler(form, "submit", function (event) {
-          event.preventDefault();
-
-          if (state.searchTimer) {
-            window.clearTimeout(state.searchTimer);
-            state.searchTimer = null;
-          }
-
-          performSearch(input.value);
-        });
-      }
-    });
-  }
-
-  function bindSearchFilters() {
-    const container = getElement("#search-filters");
-
-    if (!container) return;
-
-    addHandler(container, "change", function () {
-      const input = findFirstElement([
-        "#search-input",
-        "#music-search",
-        "#explore-search-input"
-      ]);
-
-      if (input && input.value.trim()) {
-        performSearch(input.value);
-      }
-    });
-  }
-
-  async function loadSearchFromRoute() {
-    const params = state.routeParams || {};
-
-    const query = String(
-      params.q ||
-      params.query ||
-      ""
-    ).trim();
-
-    if (!query) {
-      return loadPageWithoutRouteSearch();
-    }
-
-    const input = findFirstElement([
-      "#search-input",
-      "#music-search"
-    ]);
-
-    if (input) {
-      input.value = query;
-    }
-
-    const filters = {};
-
-    ["type", "genre", "country", "language"].forEach(
-      function (key) {
-        if (params[key]) {
-          filters[key] = params[key];
-        }
-      }
-    );
-
-    return performSearch(query, filters);
-  }
-
-  function loadPageWithoutRouteSearch() {
-    const input = findFirstElement([
-      "#search-input",
-      "#music-search"
-    ]);
-
-    if (input && input.value.trim()) {
-      return performSearch(input.value);
-    }
-
-    return true;
-  }
-
-  /* =========================================================
-     LIBRARY
-  ========================================================= */
-
-  function renderLibrarySection(selectors, tracks, options) {
-    const container = findFirstElement(selectors);
-
-    if (container) {
-      renderTracks(container, tracks, options);
-    }
-  }
-
-  async function loadLibrary() {
-    if (!library) return false;
-
-    try {
-      const liked =
-        typeof library.getLiked === "function"
-          ? library.getLiked()
-          : [];
-
-      const saved =
-        typeof library.getSaved === "function"
-          ? library.getSaved()
-          : [];
-
-      const history =
-        typeof library.getHistory === "function"
-          ? library.getHistory()
-          : [];
-
-      renderLibrarySection(
-        ["#liked-tracks", "#library-liked", "[data-library='liked']"],
-        liked,
-        {
-          showLike: true,
-          emptyTitle: "No liked music yet",
-          emptyMessage: "Like tracks to find them here."
-        }
-      );
-
-      renderLibrarySection(
-        ["#saved-tracks", "#library-saved", "[data-library='saved']"],
-        saved,
-        {
-          showLike: true,
-          showSave: true,
-          emptyTitle: "No saved tracks yet",
-          emptyMessage: "Save music to return to it later."
-        }
-      );
-
-      renderLibrarySection(
-        ["#listening-history", "#library-history", "[data-library='history']"],
-        history,
-        {
-          showLike: true,
-          emptyTitle: "Your listening history is empty",
-          emptyMessage: "Tracks you play will appear here."
-        }
-      );
-
-      renderPlaylistCards(
-        getElement("#library-playlists"),
-        typeof library.getPlaylists === "function"
-          ? library.getPlaylists()
-          : []
-      );
-
-      emitAppEvent("library:rendered", {
-        summary:
-          typeof library.getSummary === "function"
-            ? library.getSummary()
-            : null
-      });
-
-      return true;
-    } catch (error) {
-      recordError(error, "load-library");
-      return false;
-    }
-  }
-
-  /* =========================================================
-     ARTISTS AND ALBUMS
-  ========================================================= */
-
-  async function loadArtists() {
-    const container = findFirstElement([
-      "#artists-list",
-      "#artists-grid",
-      "[data-section='artists']"
-    ]);
-
-    if (!container) return false;
-
-    try {
-      renderSimpleEntityCards(
-        container,
-        await callDiscovery("getArtists"),
-        "artist"
-      );
-
-      return true;
-    } catch (error) {
-      recordError(error, "artists");
-      return false;
-    }
-  }
-
-  async function loadAlbums() {
-    const container = findFirstElement([
-      "#albums-list",
-      "#albums-grid",
-      "[data-section='albums']"
-    ]);
-
-    if (!container) return false;
-
-    try {
-      renderSimpleEntityCards(
-        container,
-        await callDiscovery("getAlbums"),
-        "album"
-      );
-
-      return true;
-    } catch (error) {
-      recordError(error, "albums");
-      return false;
-    }
-  }
-
-  /* =========================================================
-     PLAYLISTS
-  ========================================================= */
-
-  function renderPlaylistCards(container, playlists) {
-    if (!container) return;
-
-    const list = normalizeList(playlists);
-
-    container.replaceChildren();
-
-    if (!list.length) {
-      if (ui && typeof ui.showEmpty === "function") {
-        ui.showEmpty(container, {
-          icon: "♫",
-          title: "No playlists yet",
-          message:
-            "Your playlists will appear here when you create them."
-        });
-      } else {
-        const message = document.createElement("p");
-        message.textContent = "No playlists yet.";
-        container.appendChild(message);
-      }
-
-      return;
-    }
-
-    const fragment = document.createDocumentFragment();
-
-    list.forEach(function (playlist) {
-      if (!playlist || typeof playlist !== "object") return;
-
-      const card = document.createElement("article");
-      card.className = "resona-playlist-card";
-
-      const title = document.createElement("h3");
-
-      title.textContent = String(
-        playlist.name || "Untitled playlist"
-      );
-
-      const ids = Array.isArray(playlist.trackIds)
-        ? playlist.trackIds
-        : Array.isArray(playlist.track_ids)
-          ? playlist.track_ids
-          : [];
-
-      const description = document.createElement("p");
-
-      description.textContent =
-        playlist.description || ids.length + " tracks";
-
-      const button = document.createElement("button");
-
-      button.type = "button";
-      button.textContent = "View playlist";
-
-      button.addEventListener("click", function () {
-        openPlaylist(
-          playlist.id || playlist.playlist_id
-        );
-      });
-
-      card.appendChild(title);
-      card.appendChild(description);
-      card.appendChild(button);
-
-      fragment.appendChild(card);
-    });
-
-    container.appendChild(fragment);
-  }
-
-  async function loadPlaylists() {
-    if (
-      !library ||
-      typeof library.getPlaylists !== "function"
-    ) {
-      return false;
-    }
-
-    try {
-      const playlists = library.getPlaylists();
-
-      renderPlaylistCards(
-        getElement("#playlists-list") ||
-        getElement("#playlists-grid"),
-        playlists
-      );
-
-      renderPlaylistCards(
-        getElement("#library-playlists"),
-        playlists
-      );
-
-      return true;
-    } catch (error) {
-      recordError(error, "load-playlists");
-      return false;
-    }
-  }
-
-  function openPlaylist(playlistId) {
-    if (
-      !library ||
-      typeof library.getPlaylistTracks !== "function"
-    ) {
-      notify("Playlist access is unavailable.", "error");
-      return [];
-    }
-
-    try {
-      const tracks = library.getPlaylistTracks(playlistId);
-
-      if (!Array.isArray(tracks) || !tracks.length) {
-        notify("This playlist has no available tracks.", "info");
-        return [];
-      }
-
-      const container = findFirstElement([
-        "#playlist-tracks",
-        "#playlist-detail-tracks",
-        "#library-playlist-tracks"
-      ]);
-
-      if (container) {
-        renderTracks(container, tracks, {
-          showLike: true,
-          emptyTitle: "Playlist is empty"
-        });
-      }
-
-      emitAppEvent("playlist:opened", {
-        playlistId: playlistId,
-        tracks: tracks
-      });
-
-      return tracks;
-    } catch (error) {
-      recordError(error, "open-playlist");
-      return [];
-    }
-  }
-
-  /* =========================================================
-     NAVIGATION
-  ========================================================= */
-
-  async function loadPage(page) {
-    switch (normalizePage(page)) {
-      case "home":
-        return loadHome();
-
-      case "explore":
-        return loadExplore();
-
-      case "search":
-        return loadSearchFromRoute();
-
-      case "library":
-        return loadLibrary();
-
-      case "artists":
-        return loadArtists();
-
-      case "albums":
-        return loadAlbums();
-
-      case "playlists":
-        return loadPlaylists();
-
-      case "settings":
-        emitAppEvent("page:settings", {});
         return true;
-
-      default:
-        return false;
-    }
-  }
-
-  async function navigate(page, options) {
-    const settings = options || {};
-
-    const parsed = parseRoute(page);
-
-    if (!parsed.valid) {
-      warn("Invalid Resona route:", page);
-
-      return {
-        success: false,
-        invalidRoute: true,
-        page: parsed.page
-      };
-    }
-
-    const selected = parsed.page;
-
-    let params = parsed.params;
-
-    if (settings.query !== undefined) {
-      params = normalizeQueryParams(settings.query);
-    } else if (settings.params !== undefined) {
-      params = normalizeQueryParams(settings.params);
-    } else if (settings.preserveParams) {
-      params = normalizeQueryParams(state.routeParams);
-    }
-
-    const nextParams = paramsToObject(params);
-    const nextHash = buildRouteHash(selected, params);
-    const currentHash = getCurrentRouteSignature();
-
-    const samePage = selected === state.currentPage;
-
-    const sameParams =
-      JSON.stringify(nextParams) ===
-      JSON.stringify(state.routeParams || {});
-
-    if (
-      samePage &&
-      sameParams &&
-      !settings.force
-    ) {
-      if (
-        settings.updateHistory !== false &&
-        currentHash !== nextHash
-      ) {
-        try {
-          const url = new URL(window.location.href);
-          url.hash = nextHash;
-
-          if (settings.replaceHistory) {
-            window.history.replaceState(
-              {
-                resonaPage: selected,
-                resonaParams: nextParams
-              },
-              "",
-              url
-            );
-          } else {
-            window.history.pushState(
-              {
-                resonaPage: selected,
-                resonaParams: nextParams
-              },
-              "",
-              url
-            );
-          }
-        } catch (error) {
-          recordError(error, "navigation-history");
-        }
-      }
-
-      state.lastRouteSignature = nextHash;
-
-      return {
-        success: true,
-        page: selected,
-        unchanged: true
-      };
-    }
-
-    const previous = state.currentPage;
-
-    state.lastPage = previous;
-    state.currentPage = selected;
-    state.routeParams = nextParams;
-
-    const found = setPageVisibility(selected);
-
-    updateNavigationControls(selected);
-
-    if (settings.updateHistory !== false) {
-      try {
-        const url = new URL(window.location.href);
-        url.hash = nextHash;
-
-        if (settings.replaceHistory) {
-          window.history.replaceState(
-            {
-              resonaPage: selected,
-              resonaParams: nextParams
-            },
-            "",
-            url
-          );
-        } else if (currentHash !== nextHash) {
-          window.history.pushState(
-            {
-              resonaPage: selected,
-              resonaParams: nextParams
-            },
-            "",
-            url
-          );
-        }
       } catch (error) {
-        recordError(error, "navigation-history");
-      }
-    }
-
-    state.lastRouteSignature = nextHash;
-
-    emitAppEvent("page:changed", {
-      previous: previous,
-      current: selected,
-      params: nextParams
-    });
-
-    announce("Opened " + selected + " page.");
-
-    try {
-      await loadPage(selected);
-    } catch (error) {
-      recordError(error, "page-loading:" + selected);
-    }
-
-    if (!found) {
-      warn("Page element not found:", selected);
-    }
-
-    return {
-      success: true,
-      page: selected,
-      params: nextParams,
-      elementFound: found
-    };
-  }
-
-  function handleNavigationClick(event) {
-    if (
-      event.defaultPrevented ||
-      event.button !== 0 ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey
-    ) {
-      return;
-    }
-
-    const target = getEventElement(event);
-
-    if (!target || !target.closest) return;
-
-    const link = target.closest(
-      "[data-navigate],[data-page-link],a[href^='#']"
-    );
-
-    if (!link) return;
-
-    if (
-      link.target === "_blank" ||
-      link.hasAttribute("download")
-    ) {
-      return;
-    }
-
-    const destination =
-      link.dataset.navigate ||
-      link.dataset.pageLink ||
-      link.dataset.page ||
-      link.getAttribute("href") ||
-      "";
-
-    const parsed = parseRoute(destination);
-
-    /*
-      Do not intercept ordinary page anchors such as:
-      #about
-      #contact
-      #section-name
-
-      Only known Resona routes are handled here.
-    */
-
-    if (!parsed.valid) return;
-
-    event.preventDefault();
-
-    navigate(parsed.page, {
-      params: parsed.params
-    });
-  }
-
-  function handlePopState() {
-    const parsed = parseRoute(window.location.hash);
-
-    if (!parsed.valid) {
-      navigate("home", {
-        updateHistory: false,
-        force: true
-      });
-
-      return;
-    }
-
-    navigate(parsed.page, {
-      params: parsed.params,
-      updateHistory: false,
-      force: true
-    });
-  }
-
-  function handleHashChange() {
-    const signature = getCurrentRouteSignature();
-
-    if (signature === state.lastRouteSignature) {
-      return;
-    }
-
-    const parsed = parseRoute(window.location.hash);
-
-    if (!parsed.valid) {
-      warn("Ignoring unknown hash route:", window.location.hash);
-      return;
-    }
-
-    navigate(parsed.page, {
-      params: parsed.params,
-      updateHistory: false,
-      force: true
-    });
-  }
-
-  function bindNavigation() {
-    addHandler(document, "click", handleNavigationClick);
-    addHandler(window, "popstate", handlePopState);
-    addHandler(window, "hashchange", handleHashChange);
-  }
-
-  /* =========================================================
-     PLAYER STATE
-  ========================================================= */
-
-  function getPlayerState() {
-    if (!player || typeof player.getState !== "function") {
-      return {};
-    }
-
-    try {
-      return player.getState() || {};
-    } catch (error) {
-      recordError(error, "player-state");
-      return {};
-    }
-  }
-
-  function formatTime(seconds) {
-    const value = Number(seconds);
-
-    if (!Number.isFinite(value) || value < 0) {
-      return "0:00";
-    }
-
-    const total = Math.floor(value);
-
-    return (
-      Math.floor(total / 60) +
-      ":" +
-      String(total % 60).padStart(2, "0")
-    );
-  }
-
-  function updateNowPlaying(track) {
-    if (!track) return;
-
-    state.currentTrack = track;
-
-    const title = getTrackTitle(track);
-    const artist = getArtistName(track);
-    const artwork = getArtwork(track);
-
-    [
-      "#mini-player-title",
-      "#player-title",
-      "#now-playing-title"
-    ].forEach(function (selector) {
-      const element = getElement(selector);
-      if (element) element.textContent = title;
-    });
-
-    [
-      "#mini-player-artist",
-      "#player-artist",
-      "#now-playing-artist"
-    ].forEach(function (selector) {
-      const element = getElement(selector);
-      if (element) element.textContent = artist;
-    });
-
-    const cover = getElement("#now-playing-cover");
-
-    if (cover) {
-      if (artwork) {
-        if (ui && typeof ui.setSafeImage === "function") {
-          ui.setSafeImage(cover, artwork);
-        } else {
-          cover.src = artwork;
-        }
-      } else {
-        cover.removeAttribute("src");
-      }
-
-      cover.alt = title + " artwork";
-    }
-
-    const mini = getElement("#mini-player");
-
-    if (mini) {
-      mini.hidden = false;
-      mini.classList.add("active", "is-visible");
-      mini.setAttribute("aria-hidden", "false");
-    }
-
-    const message = getElement("#player-message");
-
-    if (message) message.textContent = "";
-  }
-
-  function updatePlaybackButtons(playing) {
-    [
-      "#mini-player-toggle",
-      "#player-toggle"
-    ].forEach(function (selector) {
-      const button = getElement(selector);
-      if (!button) return;
-
-      button.setAttribute(
-        "aria-label",
-        playing ? "Pause" : "Play"
-      );
-
-      button.setAttribute(
-        "aria-pressed",
-        playing ? "true" : "false"
-      );
-
-      const icon = button.querySelector("[data-play-icon]");
-
-      if (icon) {
-        icon.textContent = playing ? "Ⅱ" : "▶";
-      }
-    });
-  }
-
-  function updatePlaybackProgress(detail) {
-    detail = detail || {};
-
-    const playerState =
-      detail.player || getPlayerState();
-
-    let currentTime = Number(
-      detail.currentTime !== undefined
-        ? detail.currentTime
-        : playerState.currentTime
-    );
-
-    let duration = Number(
-      detail.duration !== undefined
-        ? detail.duration
-        : playerState.duration
-    );
-
-    if (!Number.isFinite(currentTime) || currentTime < 0) {
-      currentTime = 0;
-    }
-
-    if (!Number.isFinite(duration) || duration < 0) {
-      duration = 0;
-    }
-
-    const progress = duration > 0
-      ? Math.min(1, Math.max(0, currentTime / duration))
-      : 0;
-
-    const fill = getElement("#player-progress-fill");
-
-    if (fill) {
-      fill.style.width = progress * 100 + "%";
-    }
-
-    const currentLabel = getElement("#player-current-time");
-    const durationLabel = getElement("#player-duration");
-
-    if (currentLabel) {
-      currentLabel.textContent = formatTime(currentTime);
-    }
-
-    if (durationLabel) {
-      durationLabel.textContent = formatTime(duration);
-    }
-
-    const track = getElement("#player-progress-track");
-
-    if (track) {
-      track.setAttribute("aria-valuemin", "0");
-      track.setAttribute("aria-valuemax", "100");
-
-      track.setAttribute(
-        "aria-valuenow",
-        String(Math.round(progress * 100))
-      );
-
-      track.setAttribute(
-        "aria-valuetext",
-        formatTime(currentTime) +
-        " of " +
-        formatTime(duration)
-      );
-    }
-  }
-
-  function openNowPlaying() {
-    const overlay = getElement("#now-playing");
-
-    if (!overlay) return false;
-
-    const current =
-      getPlayerState().currentTrack ||
-      state.currentTrack;
-
-    if (current) updateNowPlaying(current);
-
-    overlay.hidden = false;
-    overlay.setAttribute("aria-hidden", "false");
-    overlay.classList.add("active", "is-open");
-
-    const close = getElement("#now-playing-close");
-
-    if (close) close.focus();
-
-    return true;
-  }
-
-  function closeNowPlaying() {
-    const overlay = getElement("#now-playing");
-
-    if (!overlay) return false;
-
-    overlay.hidden = true;
-    overlay.setAttribute("aria-hidden", "true");
-    overlay.classList.remove("active", "is-open");
-
-    return true;
-  }
-
-  /* =========================================================
-     PLAYER OPERATIONS
-  ========================================================= */
-
-  async function playTrack(track, options) {
-    if (!player || typeof player.playTrack !== "function") {
-      notify("The music player is unavailable.", "error");
-      return false;
-    }
-
-    if (!track || !getTrackId(track)) {
-      notify("This track is missing valid track information.", "error");
-      return false;
-    }
-
-    try {
-      const result = await player.playTrack(
-        track,
-        options || {}
-      );
-
-      const successful =
-        result === true ||
-        Boolean(
-          result &&
-          typeof result === "object" &&
-          result.success === true
-        );
-
-      if (!successful) {
-        const reason =
-          result && result.error
-            ? result.error
-            : "Playback could not start.";
-
-        notify(reason, "error");
+        console.warn("Resona storage error:", error);
         return false;
       }
+    },
 
-      const actualTrack =
-        result && result.track
-          ? result.track
-          : track;
+    image(value) {
+      if (!value) return "";
 
-      state.currentTrack = actualTrack;
+      const url = String(value).trim();
 
-      updateNowPlaying(actualTrack);
-
-      if (
-        library &&
-        typeof library.addHistory === "function"
-      ) {
-        try {
-          library.addHistory(actualTrack);
-        } catch (error) {
-          recordError(error, "history-add");
-        }
+      if (url.startsWith("/") && !url.startsWith("//")) {
+        return url;
       }
-
-      emitAppEvent("track:played", {
-        track: actualTrack
-      });
-
-      return true;
-    } catch (error) {
-      recordError(error, "play-track");
-
-      const message = error && error.message
-        ? error.message
-        : "Playback failed.";
-
-      notify(message, "error");
-
-      const playerMessage = getElement("#player-message");
-
-      if (playerMessage) {
-        playerMessage.textContent = message;
-      }
-
-      return false;
-    }
-  }
-
-  async function playTrackById(trackId) {
-    const id = String(trackId || "").trim();
-
-    if (!id) return false;
-
-    const collections = [];
-
-    if (library) {
-      ["getLiked", "getSaved", "getHistory"].forEach(
-        function (method) {
-          if (typeof library[method] === "function") {
-            collections.push(
-              safeCall(function () {
-                return library[method]();
-              }, [])
-            );
-          }
-        }
-      );
-    }
-
-    if (
-      discovery &&
-      typeof discovery.getTracks === "function"
-    ) {
-      try {
-        collections.push(await discovery.getTracks());
-      } catch (error) {
-        recordError(error, "find-track-discovery");
-      }
-    }
-
-    for (const collection of collections) {
-      const list = normalizeList(collection);
-
-      const found = list.find(function (track) {
-        return getTrackId(track) === id;
-      });
-
-      if (found) return playTrack(found);
-    }
-
-    if (api && typeof api.getTrack === "function") {
-      try {
-        const response = unwrapResult(
-          await api.getTrack(id)
-        );
-
-        const track =
-          response && response.track
-            ? response.track
-            : response;
-
-        if (track && getTrackId(track)) {
-          return playTrack(track);
-        }
-      } catch (error) {
-        recordError(error, "get-track");
-      }
-    }
-
-    notify("That track could not be found.", "error");
-    return false;
-  }
-
-  async function togglePlayback() {
-    if (!player) {
-      notify("The player is unavailable.", "error");
-      return false;
-    }
-
-    try {
-      if (typeof player.togglePlayback === "function") {
-        return await player.togglePlayback();
-      }
-
-      const current = getPlayerState();
-
-      if (current.playing && typeof player.pause === "function") {
-        return await player.pause();
-      }
-
-      if (typeof player.resume === "function") {
-        return await player.resume();
-      }
-
-      return false;
-    } catch (error) {
-      recordError(error, "player-toggle");
-      notify("Playback could not be changed.", "error");
-      return false;
-    }
-  }
-
-  async function playNext() {
-    if (!player) return false;
-
-    try {
-      if (typeof player.playNext === "function") {
-        return await player.playNext();
-      }
-
-      if (typeof player.next === "function") {
-        return await player.next();
-      }
-    } catch (error) {
-      recordError(error, "player-next");
-      notify("Could not play the next track.", "error");
-    }
-
-    return false;
-  }
-
-  async function playPrevious() {
-    if (!player) return false;
-
-    try {
-      if (typeof player.playPrevious === "function") {
-        return await player.playPrevious();
-      }
-
-      if (typeof player.previous === "function") {
-        return await player.previous();
-      }
-    } catch (error) {
-      recordError(error, "player-previous");
-      notify("Could not play the previous track.", "error");
-    }
-
-    return false;
-  }
-
-  async function seekFromProgress(event) {
-    if (!player) return false;
-
-    const track = getElement("#player-progress-track");
-
-    if (!track) return false;
-
-    const duration = Number(getPlayerState().duration);
-
-    if (!Number.isFinite(duration) || duration <= 0) {
-      return false;
-    }
-
-    const bounds = track.getBoundingClientRect();
-
-    if (!bounds.width) return false;
-
-    const fraction = Math.min(
-      1,
-      Math.max(
-        0,
-        (event.clientX - bounds.left) / bounds.width
-      )
-    );
-
-    try {
-      if (typeof player.seekToProgress === "function") {
-        await player.seekToProgress(fraction);
-      } else if (typeof player.seek === "function") {
-        await player.seek(fraction * duration);
-      } else {
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      recordError(error, "player-seek");
-      notify("Unable to seek in this track.", "error");
-      return false;
-    }
-  }
-
-  /* =========================================================
-     PLAYER EVENTS
-  ========================================================= */
-
-  function handlePlayerEvent(type, detail) {
-    detail = detail || {};
-
-    const playerState =
-      detail.player || getPlayerState();
-
-    const track =
-      detail.track ||
-      detail.currentTrack ||
-      playerState.currentTrack ||
-      null;
-
-    if (track) {
-      state.currentTrack = track;
-      updateNowPlaying(track);
-    }
-
-    if (type === "play") {
-      updatePlaybackButtons(true);
-    }
-
-    if (type === "pause" || type === "ended") {
-      updatePlaybackButtons(false);
-    }
-
-    if (
-      type === "timeupdate" ||
-      type === "statechange"
-    ) {
-      updatePlaybackProgress(detail);
-    }
-
-    if (type === "statechange") {
-      updatePlaybackButtons(
-        Boolean(playerState.playing)
-      );
-
-      if (!playerState.currentTrack) {
-        state.currentTrack = null;
-
-        const mini = getElement("#mini-player");
-
-        if (mini) {
-          mini.hidden = true;
-          mini.classList.remove("active", "is-visible");
-          mini.setAttribute("aria-hidden", "true");
-        }
-      }
-    }
-
-    if (type === "error") {
-      const message =
-        detail.message ||
-        (detail.error && detail.error.message) ||
-        "A playback error occurred.";
-
-      const output = getElement("#player-message");
-
-      if (output) output.textContent = message;
-
-      notify(message, "error");
-      updatePlaybackButtons(false);
-    }
-
-    if (type === "buffering") {
-      const output = getElement("#player-message");
-
-      if (output) output.textContent = "Buffering…";
-    }
-
-    if (type === "play" || type === "pause") {
-      const output = getElement("#player-message");
-
-      if (output) output.textContent = "";
-    }
-
-    emitAppEvent("player:" + type, detail);
-  }
-
-  function bindPlayerEvents() {
-    if (!player || typeof player.on !== "function") {
-      return;
-    }
-
-    const events = player.EVENTS || {};
-
-    const bindings = [
-      [events.TRACK_CHANGE, "trackchange"],
-      [events.PLAY, "play"],
-      [events.PAUSE, "pause"],
-      [events.ENDED, "ended"],
-      [events.TIME_UPDATE, "timeupdate"],
-      [events.VOLUME_CHANGE, "volumechange"],
-      [events.ERROR, "error"],
-      [events.STATE_CHANGE, "statechange"],
-      [events.BUFFERING, "buffering"]
-    ];
-
-    bindings.forEach(function (binding) {
-      const eventName = binding[0];
-      const type = binding[1];
-
-      if (!eventName) return;
-
-      const callback = function (detail) {
-        handlePlayerEvent(type, detail);
-      };
 
       try {
-        const unsubscribe = player.on(
-          eventName,
-          callback
-        );
+        const parsed = new URL(url);
 
-        if (typeof unsubscribe === "function") {
-          addUnsubscriber(unsubscribe);
-        } else if (typeof player.off === "function") {
-          addUnsubscriber(function () {
-            player.off(eventName, callback);
-          });
-        }
-      } catch (error) {
-        recordError(error, "player-event-" + type);
-      }
-    });
-  }
-
-  /* =========================================================
-     PLAYER CONTROLS
-  ========================================================= */
-
-  function bindPlayerControls() {
-    const open = getElement("#mini-player-open");
-    const close = getElement("#now-playing-close");
-
-    if (open) {
-      addHandler(open, "click", openNowPlaying);
-    }
-
-    if (close) {
-      addHandler(close, "click", closeNowPlaying);
-    }
-
-    [
-      "#mini-player-toggle",
-      "#player-toggle"
-    ].forEach(function (selector) {
-      const button = getElement(selector);
-
-      if (button) {
-        addHandler(button, "click", togglePlayback);
-      }
-    });
-
-    [
-      "#mini-player-next",
-      "#player-next"
-    ].forEach(function (selector) {
-      const button = getElement(selector);
-
-      if (button) {
-        addHandler(button, "click", playNext);
-      }
-    });
-
-    [
-      "#mini-player-previous",
-      "#player-previous"
-    ].forEach(function (selector) {
-      const button = getElement(selector);
-
-      if (button) {
-        addHandler(button, "click", playPrevious);
-      }
-    });
-
-    const progress = getElement("#player-progress-track");
-
-    if (progress) {
-      addHandler(progress, "click", seekFromProgress);
-
-      addHandler(progress, "keydown", function (event) {
         if (
-          !["ArrowLeft", "ArrowRight", "Home", "End"]
-            .includes(event.key)
+          parsed.protocol === "https:" ||
+          parsed.protocol === "http:"
         ) {
-          return;
+          return url;
         }
+      } catch {}
 
-        event.preventDefault();
+      return "";
+    },
 
-        const current = getPlayerState();
-        const duration = Number(current.duration);
+    audio(value) {
+      if (!value) return "";
 
-        if (!Number.isFinite(duration) || duration <= 0) {
-          return;
-        }
+      try {
+        const url = new URL(String(value));
 
-        let fraction =
-          Number(current.progress) ||
-          (
-            Number(current.currentTime) / duration
-          );
+        return (
+          url.protocol === "https:" ||
+          url.protocol === "http:"
+        ) ? url.href : "";
+      } catch {
+        return "";
+      }
+    },
 
-        if (event.key === "ArrowLeft") fraction -= 0.05;
-        if (event.key === "ArrowRight") fraction += 0.05;
-        if (event.key === "Home") fraction = 0;
-        if (event.key === "End") fraction = 1;
+    time(seconds) {
+      const value = Number(seconds);
 
-        fraction = Math.min(1, Math.max(0, fraction));
-
-        if (typeof player.seekToProgress === "function") {
-          player.seekToProgress(fraction);
-        } else if (typeof player.seek === "function") {
-          player.seek(fraction * duration);
-        }
-      });
-    }
-
-    const overlay = getElement("#now-playing");
-
-    if (overlay) {
-      addHandler(overlay, "click", function (event) {
-        if (event.target === overlay) {
-          closeNowPlaying();
-        }
-      });
-    }
-  }
-
-  /* =========================================================
-     LIBRARY EXPORT
-  ========================================================= */
-
-  function exportLibrary() {
-    if (
-      !library ||
-      typeof library.exportLibrary !== "function"
-    ) {
-      notify("Library backup is unavailable.", "error");
-      return false;
-    }
-
-    try {
-      const exported = library.exportLibrary();
-
-      if (exported === null || exported === undefined) {
-        notify("There is no library backup to export.", "info");
-        return false;
+      if (!Number.isFinite(value) || value < 0) {
+        return "0:00";
       }
 
-      const content = typeof exported === "string"
-        ? exported
-        : JSON.stringify(exported, null, 2);
+      return (
+        Math.floor(value / 60) +
+        ":" +
+        String(Math.floor(value % 60)).padStart(2, "0")
+      );
+    },
 
-      if (!content) {
-        notify("The library backup is empty.", "info");
-        return false;
+    debounce(callback, delay = 300) {
+      let timer;
+
+      return (...args) => {
+        clearTimeout(timer);
+
+        timer = setTimeout(() => {
+          callback(...args);
+        }, delay);
+      };
+    }
+  };
+
+  /* ==========================================================
+     4. NOTIFICATIONS
+     ========================================================== */
+
+  const Toast = {
+    timer: null,
+
+    show(message, duration = 2800) {
+      let element = Utils.$("#resona-toast");
+
+      if (!element) {
+        element = document.createElement("div");
+
+        element.id = "resona-toast";
+        element.setAttribute("role", "status");
+        element.setAttribute("aria-live", "polite");
+
+        Object.assign(element.style, {
+          position: "fixed",
+          left: "50%",
+          bottom: "125px",
+          transform: "translateX(-50%)",
+          zIndex: "9999",
+          padding: "13px 19px",
+          borderRadius: "12px",
+          background: "#211e35",
+          color: "#ffffff",
+          border: "1px solid rgba(155,123,255,.4)",
+          fontSize: "13px",
+          maxWidth: "90%",
+          textAlign: "center",
+          boxShadow: "0 8px 30px rgba(0,0,0,.4)"
+        });
+
+        document.body.appendChild(element);
       }
+
+      element.textContent = String(message);
+      element.hidden = false;
+
+      clearTimeout(this.timer);
+
+      this.timer = setTimeout(() => {
+        element.hidden = true;
+      }, duration);
+    }
+  };
+
+  /* ==========================================================
+     5. TRACK CATALOGUE
+     ========================================================== */
+
+  const Catalogue = {
+    normalize(input) {
+      if (!input || typeof input !== "object") {
+        return null;
+      }
+
+      const id = String(
+        input.id ??
+        input.track_id ??
+        ""
+      ).trim();
+
+      const title = String(
+        input.title ??
+        input.name ??
+        ""
+      ).trim();
+
+      const artist = String(
+        input.artist ??
+        input.artist_name ??
+        ""
+      ).trim();
+
+      if (!id || !title || !artist) {
+        return null;
+      }
+
+      const duration = Number(
+        input.duration ??
+        input.duration_seconds ??
+        0
+      );
+
+      const moods = Array.isArray(input.mood)
+        ? input.mood.map(String)
+        : typeof input.mood === "string"
+          ? input.mood.split(",").map(v => v.trim())
+          : [];
+
+      return {
+        id,
+        title,
+        artist,
+
+        artistId: String(
+          input.artistId ??
+          input.artist_id ??
+          ""
+        ),
+
+        album: String(
+          input.album ??
+          input.album_title ??
+          ""
+        ),
+
+        albumId: String(
+          input.albumId ??
+          input.album_id ??
+          ""
+        ),
+
+        artwork: Utils.image(
+          input.artwork ??
+          input.cover_url ??
+          input.artwork_url ??
+          ""
+        ),
+
+        audioUrl: Utils.audio(
+          input.audioUrl ??
+          input.audio_url ??
+          input.stream_url ??
+          ""
+        ),
+
+        duration:
+          Number.isFinite(duration) && duration > 0
+            ? duration
+            : 0,
+
+        country: String(input.country ?? ""),
+        language: String(input.language ?? ""),
+        genre: String(input.genre ?? ""),
+        continent: String(input.continent ?? "").toLowerCase(),
+
+        mood: moods,
+
+        rightsConfirmed:
+          input.rightsConfirmed === true ||
+          input.rights_confirmed === true,
+
+        explicit: input.explicit === true,
+
+        featured: input.featured === true,
+
+        verifiedArtist:
+          input.verifiedArtist === true ||
+          input.verified_artist === true,
+
+        plays: Number(input.plays) || 0
+      };
+    },
+
+    load(items) {
+      if (!Array.isArray(items)) {
+        return;
+      }
+
+      const seen = new Set();
+
+      state.tracks = items
+        .map(item => this.normalize(item))
+        .filter(track => {
+          if (!track || seen.has(track.id)) {
+            return false;
+          }
+
+          seen.add(track.id);
+          return true;
+        });
+
+      state.artists = [];
+      state.albums = [];
+
+      const artists = new Map();
+      const albums = new Map();
+
+      state.tracks.forEach(track => {
+        if (track.artist) {
+          const key = track.artist.toLowerCase();
+
+          if (!artists.has(key)) {
+            artists.set(key, {
+              id: track.artistId || key,
+              name: track.artist,
+              artwork: track.artwork,
+              country: track.country
+            });
+          }
+        }
+
+        if (track.album) {
+          const key = track.album.toLowerCase();
+
+          if (!albums.has(key)) {
+            albums.set(key, {
+              id: track.albumId || key,
+              title: track.album,
+              artist: track.artist,
+              artwork: track.artwork
+            });
+          }
+        }
+      });
+
+      state.artists = Array.from(artists.values());
+      state.albums = Array.from(albums.values());
+    },
+
+    get(id) {
+      return state.tracks.find(
+        track => String(track.id) === String(id)
+      ) || null;
+    },
+
+    search(query) {
+      const term = String(query || "").toLowerCase().trim();
+
+      if (!term) return [];
+
+      return state.tracks.filter(track => {
+        const text = [
+          track.title,
+          track.artist,
+          track.album,
+          track.genre,
+          track.country,
+          track.language
+        ].join(" ").toLowerCase();
+
+        return text.includes(term);
+      });
+    }
+  };
+
+  /* ==========================================================
+     6. PERSONAL LIBRARY
+     ========================================================== */
+
+  const Library = {
+    load() {
+      state.likedTracks = Utils.read("liked_tracks", []);
+      state.savedTracks = Utils.read("saved_tracks", []);
+      state.listeningHistory = Utils.read("history", []);
+
+      if (!Array.isArray(state.likedTracks)) {
+        state.likedTracks = [];
+      }
+
+      if (!Array.isArray(state.savedTracks)) {
+        state.savedTracks = [];
+      }
+
+      if (!Array.isArray(state.listeningHistory)) {
+        state.listeningHistory = [];
+      }
+    },
+
+    isLiked(id) {
+      return state.likedTracks.some(
+        value => String(value) === String(id)
+      );
+    },
+
+    toggleLike(id) {
+      const exists = this.isLiked(id);
+
+      state.likedTracks = exists
+        ? state.likedTracks.filter(
+            value => String(value) !== String(id)
+          )
+        : [...state.likedTracks, String(id)];
+
+      Utils.write("liked_tracks", state.likedTracks);
+
+      return !exists;
+    },
+
+    isSaved(id) {
+      return state.savedTracks.some(
+        value => String(value) === String(id)
+      );
+    },
+
+    toggleSaved(id) {
+      const exists = this.isSaved(id);
+
+      state.savedTracks = exists
+        ? state.savedTracks.filter(
+            value => String(value) !== String(id)
+          )
+        : [...state.savedTracks, String(id)];
+
+      Utils.write("saved_tracks", state.savedTracks);
+
+      return !exists;
+    },
+
+    addHistory(track) {
+      if (!track) return;
+
+      state.listeningHistory =
+        state.listeningHistory.filter(
+          item => String(item.id) !== String(track.id)
+        );
+
+      state.listeningHistory.unshift({
+        id: track.id,
+        playedAt: new Date().toISOString()
+      });
+
+      state.listeningHistory =
+        state.listeningHistory.slice(0, config.maxHistory);
+
+      Utils.write("history", state.listeningHistory);
+    },
+
+    liked() {
+      return state.likedTracks
+        .map(id => Catalogue.get(id))
+        .filter(Boolean);
+    },
+
+    saved() {
+      return state.savedTracks
+        .map(id => Catalogue.get(id))
+        .filter(Boolean);
+    },
+
+    history() {
+      return state.listeningHistory
+        .map(item => ({
+          ...item,
+          track: Catalogue.get(item.id)
+        }))
+        .filter(item => item.track);
+    },
+
+    clearLiked() {
+      state.likedTracks = [];
+      Utils.write("liked_tracks", []);
+
+      Toast.show("Liked tracks cleared.");
+
+      LibraryPage.render();
+    },
+
+    clearHistory() {
+      state.listeningHistory = [];
+      Utils.write("history", []);
+
+      Toast.show("Listening history cleared.");
+
+      LibraryPage.render();
+    },
+
+    export() {
+      const data = {
+        exportedAt: new Date().toISOString(),
+        likedTracks: state.likedTracks,
+        savedTracks: state.savedTracks,
+        listeningHistory: state.listeningHistory
+      };
 
       const blob = new Blob(
-        [content],
-        { type: "application/json;charset=utf-8" }
+        [JSON.stringify(data, null, 2)],
+        { type: "application/json" }
       );
 
       const url = URL.createObjectURL(blob);
+
       const link = document.createElement("a");
 
       link.href = url;
-      link.download = "resona-library-backup.json";
-      link.style.display = "none";
+      link.download = "resona-library.json";
 
       document.body.appendChild(link);
       link.click();
       link.remove();
 
-      window.setTimeout(function () {
-        URL.revokeObjectURL(url);
-      }, 1500);
+      URL.revokeObjectURL(url);
 
-      notify("Your library backup is ready.", "success");
-
-      return true;
-    } catch (error) {
-      recordError(error, "library-export");
-      notify("Could not export your library.", "error");
-      return false;
+      Toast.show("Your library export is ready.");
     }
-  }
+  };
 
-  /* =========================================================
-     CONFIRMATION AND LIBRARY ACTIONS
-  ========================================================= */
+  /* ==========================================================
+     7. NAVIGATION
+     Supports:
+     data-navigate
+     data-page-link
+     data-page-target
+     data-page
+     href="#page"
+     ========================================================== */
 
-  async function confirmAction(title, message) {
-    if (ui && typeof ui.confirm === "function") {
-      try {
-        return Boolean(
-          await ui.confirm({
-            title: title,
-            message: message,
-            confirmText: "Continue",
-            cancelText: "Cancel"
-          })
-        );
-      } catch (error) {
-        recordError(error, "confirm");
-      }
-    }
+  const Navigation = {
+    pages: [
+      "home",
+      "explore",
+      "search",
+      "library",
+      "artists",
+      "albums",
+      "playlists",
+      "settings"
+    ],
 
-    return typeof window.confirm === "function"
-      ? window.confirm(title + "\n\n" + message)
-      : false;
-  }
+    getDestination(element) {
+      if (!element) return "";
 
-  async function clearHistory() {
-    if (
-      !library ||
-      typeof library.clearHistory !== "function"
-    ) {
-      return false;
-    }
+      return String(
+        element.dataset.navigate ||
+        element.dataset.pageLink ||
+        element.dataset.pageTarget ||
+        element.dataset.page ||
+        element.getAttribute("href")?.replace(/^#\/?/, "") ||
+        ""
+      ).trim().toLowerCase().replace(/_/g, "-");
+    },
 
-    if (!await confirmAction(
-      "Clear listening history?",
-      "This will remove your saved listening history from this device."
-    )) {
-      return false;
-    }
+    show(page) {
+      const destination = String(page || "home")
+        .trim()
+        .toLowerCase()
+        .replace(/_/g, "-");
 
-    try {
-      library.clearHistory();
-      notify("Listening history cleared.", "success");
-      await loadLibrary();
-      return true;
-    } catch (error) {
-      recordError(error, "clear-history");
-      notify("Could not clear listening history.", "error");
-      return false;
-    }
-  }
-
-  async function clearLiked() {
-    if (
-      !library ||
-      typeof library.clearLiked !== "function"
-    ) {
-      return false;
-    }
-
-    if (!await confirmAction(
-      "Clear liked tracks?",
-      "This will remove all liked tracks from your library on this device."
-    )) {
-      return false;
-    }
-
-    try {
-      library.clearLiked();
-      notify("Liked tracks cleared.", "success");
-      await loadLibrary();
-      return true;
-    } catch (error) {
-      recordError(error, "clear-liked");
-      notify("Could not clear liked tracks.", "error");
-      return false;
-    }
-  }
-
-  /* =========================================================
-     GLOBAL ACTIONS
-  ========================================================= */
-
-  async function handleGlobalAction(action, element) {
-    switch (action) {
-      case "play":
-      case "resume":
-        if (element && element.dataset.trackId) {
-          return playTrackById(element.dataset.trackId);
-        }
-
-        if (player && typeof player.resume === "function") {
-          return player.resume();
-        }
-
+      if (!this.pages.includes(destination)) {
+        Toast.show("That page is not available.");
         return false;
+      }
 
-      case "pause":
-        return player && typeof player.pause === "function"
-          ? player.pause()
-          : false;
+      const target = Utils.$(
+        "#" + destination + "-page"
+      );
 
-      case "toggle-playback":
-        return togglePlayback();
+      if (!target) {
+        console.error("Resona page not found:", destination);
+        return false;
+      }
 
-      case "next":
-        return playNext();
-
-      case "previous":
-        return playPrevious();
-
-      case "shuffle":
-        if (player && typeof player.setShuffle === "function") {
-          return player.setShuffle(
-            !Boolean(getPlayerState().shuffle)
+      Utils.$$("[data-page]").forEach(element => {
+        if (element.matches(".page")) {
+          element.hidden = element.dataset.page !== destination;
+          element.setAttribute(
+            "aria-hidden",
+            String(element.hidden)
           );
         }
-        return false;
+      });
 
-      case "repeat":
-        if (player && typeof player.cycleRepeat === "function") {
-          return player.cycleRepeat();
+      this.pages.forEach(name => {
+        const element = Utils.$("#" + name + "-page");
+
+        if (element) {
+          element.hidden = name !== destination;
+          element.setAttribute(
+            "aria-hidden",
+            String(name !== destination)
+          );
         }
+      });
 
-        if (player && typeof player.toggleRepeat === "function") {
-          return player.toggleRepeat();
+      state.currentPage = destination;
+
+      Utils.write("last_page", destination);
+
+      Utils.$$(
+        "[data-navigate], [data-page-link], [data-page-target], [data-page], .nav-link, .nav-button"
+      ).forEach(element => {
+        const active =
+          this.getDestination(element) === destination;
+
+        element.classList.toggle("active", active);
+        element.classList.toggle("is-active", active);
+
+        if (active) {
+          element.setAttribute("aria-current", "page");
+        } else {
+          element.removeAttribute("aria-current");
         }
+      });
 
-        return false;
+      this.render(destination);
 
-      case "clear-history":
-        return clearHistory();
+      window.scrollTo({
+        top: 0,
+        behavior: "auto"
+      });
 
-      case "clear-liked":
-        return clearLiked();
+      return true;
+    },
 
-      case "refresh":
-        return refresh();
+    render(page) {
+      switch (page) {
+        case "home":
+          Home.render();
+          break;
 
-      case "close-now-playing":
-        return closeNowPlaying();
+        case "explore":
+          Explore.render();
+          break;
 
-      case "open-now-playing":
-        return openNowPlaying();
+        case "search":
+          Search.render();
+          break;
 
-      default:
-        return false;
+        case "library":
+          LibraryPage.render();
+          break;
+
+        case "artists":
+          EntityPages.artists();
+          break;
+
+        case "albums":
+          EntityPages.albums();
+          break;
+
+        case "playlists":
+          EntityPages.playlists();
+          break;
+      }
     }
-  }
+  };
 
-  function bindGlobalActions() {
-    addHandler(document, "click", function (event) {
-      const target = getEventElement(event);
+  /* ==========================================================
+     8. TRACK DISPLAY
+     ========================================================== */
 
-      if (!target || !target.closest) return;
+  const TrackUI = {
+    card(track) {
+      const liked = Library.isLiked(track.id);
 
-      const element = target.closest("[data-resona-action]");
+      const image = track.artwork
+        ? `<img src="${Utils.escape(track.artwork)}"
+                alt="${Utils.escape(track.title)} artwork"
+                loading="lazy">`
+        : `<div class="resona-art-placeholder">♫</div>`;
+
+      return `
+        <article class="track-card resona-track-card">
+
+          <div class="track-artwork">
+            ${image}
+          </div>
+
+          <button
+            type="button"
+            class="track-play-area"
+            data-action="play"
+            data-track-id="${Utils.escape(track.id)}"
+          >
+            <h3>${Utils.escape(track.title)}</h3>
+            <p>${Utils.escape(track.artist)}</p>
+          </button>
+
+          <div class="track-card-actions">
+
+            <button
+              type="button"
+              class="icon-button"
+              data-action="like"
+              data-track-id="${Utils.escape(track.id)}"
+              aria-label="${liked ? "Unlike" : "Like"} track"
+              aria-pressed="${liked}"
+            >${liked ? "♥" : "♡"}</button>
+
+            <button
+              type="button"
+              class="icon-button"
+              data-action="play"
+              data-track-id="${Utils.escape(track.id)}"
+              aria-label="Play track"
+            >▶</button>
+
+          </div>
+        </article>
+      `;
+    },
+
+    entity(item, type) {
+      const name =
+        item.name ||
+        item.title ||
+        item.artist ||
+        "Unknown";
+
+      const image = Utils.image(item.artwork);
+
+      return `
+        <article class="entity-card">
+
+          ${image
+            ? `<img src="${Utils.escape(image)}"
+                    alt="${Utils.escape(name)}"
+                    loading="lazy">`
+            : `<div class="entity-placeholder">♫</div>`
+          }
+
+          <h3>${Utils.escape(name)}</h3>
+
+          <p>${Utils.escape(item.artist || item.country || type)}</p>
+
+        </article>
+      `;
+    },
+
+    render(container, tracks, emptyMessage) {
+      if (!container) return;
+
+      container.innerHTML = tracks.length
+        ? tracks.map(track => this.card(track)).join("")
+        : `<div class="empty-state">${Utils.escape(emptyMessage)}</div>`;
+    }
+  };
+
+  /* ==========================================================
+     9. HOME PAGE
+     ========================================================== */
+
+  const Home = {
+    render() {
+      const featured = state.tracks.filter(
+        track => track.featured
+      );
+
+      const trending = [...state.tracks].sort(
+        (a, b) => b.plays - a.plays
+      );
+
+      TrackUI.render(
+        Utils.$("#featured-tracks"),
+        featured.length ? featured : state.tracks.slice(0, 8),
+        "No featured music yet. Music will appear here when a catalogue is connected."
+      );
+
+      TrackUI.render(
+        Utils.$("#trending-tracks"),
+        trending.slice(0, 8),
+        "Trending music will appear here when available."
+      );
+
+      const recent = Library.history()
+        .map(item => item.track);
+
+      TrackUI.render(
+        Utils.$("#recently-played"),
+        recent.slice(0, 8),
+        "Your listening history will appear here."
+      );
+    }
+  };
+
+  /* ==========================================================
+     10. EXPLORE
+     ========================================================== */
+
+  const Explore = {
+    render() {
+      TrackUI.render(
+        Utils.$("#explore-tracks"),
+        state.tracks,
+        "No music is available yet."
+      );
+
+      const artists = Utils.$("#explore-artists");
+      const albums = Utils.$("#explore-albums");
+
+      if (artists) {
+        artists.innerHTML = state.artists.length
+          ? state.artists.map(item =>
+              TrackUI.entity(item, "Artist")
+            ).join("")
+          : `<div class="empty-state">Artists will appear here.</div>`;
+      }
+
+      if (albums) {
+        albums.innerHTML = state.albums.length
+          ? state.albums.map(item =>
+              TrackUI.entity(item, "Album")
+            ).join("")
+          : `<div class="empty-state">Albums will appear here.</div>`;
+      }
+    }
+  };
+
+  /* ==========================================================
+     11. SEARCH
+     ========================================================== */
+
+  const Search = {
+    render() {
+      const input = Utils.$("#search-input");
+
+      if (input && input.value.trim()) {
+        this.run(input.value);
+      }
+    },
+
+    run(query) {
+      const term = String(query || "").trim();
+
+      const type = Utils.$(
+        '#search-filters select[name="type"]'
+      )?.value || "";
+
+      const genre = Utils.$(
+        '#search-filters select[name="genre"]'
+      )?.value || "";
+
+      const country = Utils.$(
+        '#search-filters select[name="country"]'
+      )?.value || "";
+
+      const language = Utils.$(
+        '#search-filters select[name="language"]'
+      )?.value || "";
+
+      state.searchQuery = term;
+
+      let results = term
+        ? Catalogue.search(term)
+        : [];
+
+      if (genre) {
+        results = results.filter(
+          track => track.genre.toLowerCase() === genre.toLowerCase()
+        );
+      }
+
+      if (country) {
+        results = results.filter(
+          track => track.country.toLowerCase() === country.toLowerCase()
+        );
+      }
+
+      if (language) {
+        results = results.filter(
+          track => track.language.toLowerCase() === language.toLowerCase()
+        );
+      }
+
+      const tracks = type === "artist" || type === "album" || type === "playlist"
+        ? []
+        : results;
+
+      TrackUI.render(
+        Utils.$("#search-results"),
+        tracks,
+        term ? "No matching tracks found." : "Start typing to discover music."
+      );
+
+      const artistResults = term
+        ? state.artists.filter(item =>
+            item.name.toLowerCase().includes(term.toLowerCase())
+          )
+        : [];
+
+      const albumResults = term
+        ? state.albums.filter(item =>
+            item.title.toLowerCase().includes(term.toLowerCase())
+          )
+        : [];
+
+      const playlistResults = term
+        ? state.playlists.filter(item =>
+            String(item.name || item.title || "")
+              .toLowerCase()
+              .includes(term.toLowerCase())
+          )
+        : [];
+
+      const artistContainer = Utils.$("#search-artists");
+      const albumContainer = Utils.$("#search-albums");
+      const playlistContainer = Utils.$("#search-playlists");
+
+      if (artistContainer) {
+        artistContainer.innerHTML = artistResults.length
+          ? artistResults.map(item => TrackUI.entity(item, "Artist")).join("")
+          : "";
+      }
+
+      if (albumContainer) {
+        albumContainer.innerHTML = albumResults.length
+          ? albumResults.map(item => TrackUI.entity(item, "Album")).join("")
+          : "";
+      }
+
+      if (playlistContainer) {
+        playlistContainer.innerHTML = playlistResults.length
+          ? playlistResults.map(item => TrackUI.entity(item, "Playlist")).join("")
+          : "";
+      }
+
+      const status = Utils.$("#search-status");
+
+      if (status) {
+        status.textContent = term
+          ? `${results.length} matching track(s) found.`
+          : "Start typing to discover music.";
+      }
+    }
+  };
+
+  /* ==========================================================
+     12. LIBRARY PAGE
+     ========================================================== */
+
+  const LibraryPage = {
+    render() {
+      TrackUI.render(
+        Utils.$("#liked-tracks"),
+        Library.liked(),
+        "Your liked tracks will appear here."
+      );
+
+      TrackUI.render(
+        Utils.$("#saved-tracks"),
+        Library.saved(),
+        "Your saved tracks will appear here."
+      );
+
+      TrackUI.render(
+        Utils.$("#listening-history"),
+        Library.history().map(item => item.track),
+        "Your listening history will appear here."
+      );
+
+      const playlists = Utils.$("#library-playlists");
+
+      if (playlists) {
+        playlists.innerHTML = state.playlists.length
+          ? state.playlists.map(item =>
+              TrackUI.entity(item, "Playlist")
+            ).join("")
+          : `<div class="empty-state">Your playlists will appear here.</div>`;
+      }
+    }
+  };
+
+  /* ==========================================================
+     13. ARTISTS / ALBUMS / PLAYLISTS
+     ========================================================== */
+
+  const EntityPages = {
+    artists() {
+      const container = Utils.$("#artists-list");
+
+      if (!container) return;
+
+      container.innerHTML = state.artists.length
+        ? state.artists.map(item =>
+            TrackUI.entity(item, "Artist")
+          ).join("")
+        : `<div class="empty-state">Artists will appear here when available.</div>`;
+    },
+
+    albums() {
+      const container = Utils.$("#albums-list");
+
+      if (!container) return;
+
+      container.innerHTML = state.albums.length
+        ? state.albums.map(item =>
+            TrackUI.entity(item, "Album")
+          ).join("")
+        : `<div class="empty-state">Albums will appear here when available.</div>`;
+    },
+
+    playlists() {
+      const container = Utils.$("#playlists-list");
+
+      if (!container) return;
+
+      container.innerHTML = state.playlists.length
+        ? state.playlists.map(item =>
+            TrackUI.entity(item, "Playlist")
+          ).join("")
+        : `<div class="empty-state">Playlists will appear here when available.</div>`;
+    }
+  };
+
+  /* ==========================================================
+     14. AUDIO PLAYER
+     ========================================================== */
+
+  const Player = {
+    get audio() {
+      return state.currentAudio;
+    },
+
+    canPlay(track) {
+      return Boolean(
+        config.enableAudioPlayback &&
+        track &&
+        track.audioUrl &&
+        track.rightsConfirmed
+      );
+    },
+
+    async playTrack(id, queue = null) {
+      const track = Catalogue.get(id);
+
+      if (!track) {
+        Toast.show("Track not found.");
+        return;
+      }
+
+      if (Array.isArray(queue)) {
+        state.queue = queue.slice(0, config.maxQueue);
+      }
+
+      if (!state.queue.length) {
+        state.queue = [track];
+      }
+
+      state.queueIndex = state.queue.findIndex(
+        item => String(item.id) === String(track.id)
+      );
+
+      state.currentTrack = track;
+
+      this.updateUI();
+
+      if (!this.canPlay(track)) {
+        this.stop();
+
+        Toast.show(
+          "Playback is unavailable for this track."
+        );
+
+        return;
+      }
+
+      this.stop();
+
+      const audio = new Audio();
+
+      audio.preload = "metadata";
+      audio.src = track.audioUrl;
+
+      state.currentAudio = audio;
+
+      audio.addEventListener("timeupdate", () => {
+        this.updateProgress();
+      });
+
+      audio.addEventListener("loadedmetadata", () => {
+        this.updateProgress();
+      });
+
+      audio.addEventListener("play", () => {
+        state.isPlaying = true;
+        this.updateUI();
+      });
+
+      audio.addEventListener("pause", () => {
+        state.isPlaying = false;
+        this.updateUI();
+      });
+
+      audio.addEventListener("ended", () => {
+        state.isPlaying = false;
+
+        if (state.repeat) {
+          audio.currentTime = 0;
+          audio.play().catch(() => {});
+          return;
+        }
+
+        this.next();
+      });
+
+      audio.addEventListener("error", () => {
+        state.isPlaying = false;
+
+        this.updateUI();
+
+        Toast.show("Unable to load this audio source.");
+      });
+
+      try {
+        await audio.play();
+
+        state.isPlaying = true;
+
+        Library.addHistory(track);
+
+        this.updateUI();
+        Home.render();
+
+      } catch (error) {
+        state.isPlaying = false;
+
+        this.updateUI();
+
+        console.warn("Resona playback error:", error);
+
+        Toast.show("Playback could not start.");
+      }
+    },
+
+    toggle() {
+      const audio = state.currentAudio;
+
+      if (!audio) {
+        Toast.show("Choose a track first.");
+        return;
+      }
+
+      if (audio.paused) {
+        audio.play()
+          .then(() => {
+            state.isPlaying = true;
+            this.updateUI();
+          })
+          .catch(() => {
+            Toast.show("Unable to resume playback.");
+          });
+      } else {
+        audio.pause();
+      }
+    },
+
+    stop() {
+      if (state.currentAudio) {
+        state.currentAudio.pause();
+        state.currentAudio.removeAttribute("src");
+        state.currentAudio.load();
+      }
+
+      state.currentAudio = null;
+      state.isPlaying = false;
+    },
+
+    next() {
+      if (!state.queue.length) {
+        Toast.show("Your queue is empty.");
+        return;
+      }
+
+      let nextIndex = state.queueIndex + 1;
+
+      if (state.shuffle && state.queue.length > 1) {
+        nextIndex = Math.floor(
+          Math.random() * state.queue.length
+        );
+      }
+
+      if (nextIndex >= state.queue.length) {
+        if (state.repeat) {
+          nextIndex = 0;
+        } else {
+          Toast.show("You've reached the end of the queue.");
+          return;
+        }
+      }
+
+      this.playTrack(
+        state.queue[nextIndex].id,
+        state.queue
+      );
+    },
+
+    previous() {
+      const audio = state.currentAudio;
+
+      if (audio && audio.currentTime > 3) {
+        audio.currentTime = 0;
+        return;
+      }
+
+      if (state.queueIndex <= 0) {
+        Toast.show("This is the first track.");
+        return;
+      }
+
+      this.playTrack(
+        state.queue[state.queueIndex - 1].id,
+        state.queue
+      );
+    },
+
+    seek(percentage) {
+      const audio = state.currentAudio;
+
+      if (!audio || !Number.isFinite(audio.duration)) {
+        return;
+      }
+
+      const value = Math.max(
+        0,
+        Math.min(100, Number(percentage) || 0)
+      );
+
+      audio.currentTime =
+        audio.duration * value / 100;
+    },
+
+    updateProgress() {
+      const audio = state.currentAudio;
+
+      const current = audio ? audio.currentTime : 0;
+
+      const duration =
+        audio && Number.isFinite(audio.duration)
+          ? audio.duration
+          : state.currentTrack?.duration || 0;
+
+      const percentage = duration > 0
+        ? current / duration * 100
+        : 0;
+
+      const fill = Utils.$("#player-progress-fill");
+
+      if (fill) {
+        fill.style.width = percentage + "%";
+      }
+
+      const progress = Utils.$("#player-progress-track");
+
+      if (progress) {
+        progress.setAttribute(
+          "aria-valuenow",
+          String(Math.round(percentage))
+        );
+      }
+
+      const currentTime = Utils.$("#player-current-time");
+      const durationTime = Utils.$("#player-duration");
+
+      if (currentTime) {
+        currentTime.textContent = Utils.time(current);
+      }
+
+      if (durationTime) {
+        durationTime.textContent = Utils.time(duration);
+      }
+    },
+
+    updateUI() {
+      const track = state.currentTrack;
+
+      const mini = Utils.$("#mini-player");
+
+      if (mini) {
+        mini.hidden = !track;
+      }
+
+      if (!track) {
+        return;
+      }
+
+      const values = {
+        "#mini-player-title": track.title,
+        "#mini-player-artist": track.artist,
+        "#now-playing-title": track.title,
+        "#now-playing-artist": track.artist
+      };
+
+      Object.entries(values).forEach(([selector, value]) => {
+        const element = Utils.$(selector);
+
+        if (element) {
+          element.textContent = value;
+        }
+      });
+
+      const cover = Utils.image(track.artwork);
+
+      [
+        "#mini-player-cover",
+        "#now-playing-cover"
+      ].forEach(selector => {
+        const image = Utils.$(selector);
+
+        if (image) {
+          image.src = cover;
+        }
+      });
+
+      Utils.$$(
+        "#mini-player-toggle, #player-toggle"
+      ).forEach(button => {
+        button.innerHTML = state.isPlaying ? "❚❚" : "▶";
+
+        button.setAttribute(
+          "aria-label",
+          state.isPlaying ? "Pause" : "Play"
+        );
+      });
+
+      this.updateProgress();
+    }
+  };
+
+  /* ==========================================================
+     15. NOW PLAYING OVERLAY
+     ========================================================== */
+
+  const NowPlaying = {
+    open() {
+      if (!state.currentTrack) {
+        Toast.show("Choose a track first.");
+        return;
+      }
+
+      const element = Utils.$("#now-playing");
 
       if (!element) return;
 
-      const action = element.dataset.resonaAction;
+      element.hidden = false;
 
-      if (!action) return;
+      element.setAttribute("aria-hidden", "false");
 
-      event.preventDefault();
+      state.playerExpanded = true;
 
-      handleGlobalAction(action, element);
-    });
+      Player.updateUI();
+    },
 
-    const exportButton = getElement("#export-library-button");
+    close() {
+      const element = Utils.$("#now-playing");
 
-    if (exportButton) {
-      addHandler(exportButton, "click", exportLibrary);
+      if (!element) return;
+
+      element.hidden = true;
+
+      element.setAttribute("aria-hidden", "true");
+
+      state.playerExpanded = false;
     }
-  }
+  };
 
-  /* =========================================================
-     LIBRARY EVENTS
-  ========================================================= */
+  /* ==========================================================
+     16. BACKEND API
+     ========================================================== */
 
-  function bindLibraryEvents() {
-    if (!library || typeof library.on !== "function") {
-      return;
-    }
+  const API = {
+    get baseUrl() {
+      return String(config.apiBase || "").replace(/\/+$/, "");
+    },
 
-    const names = [
-      "track:liked",
-      "track:unliked",
-      "track:saved",
-      "track:unsaved",
-      "history:added",
-      "history:cleared",
-      "liked:cleared",
-      "saved:cleared",
-      "playlist:created",
-      "playlist:updated",
-      "playlist:deleted",
-      "imported"
-    ];
-
-    names.forEach(function (name) {
-      const callback = function (detail) {
-        emitAppEvent("library:" + name, detail || {});
-
-        if (
-          state.currentPage === "library" ||
-          state.currentPage === "playlists"
-        ) {
-          loadPage(state.currentPage);
-        }
-      };
-
-      try {
-        const unsubscribe = library.on(name, callback);
-
-        if (typeof unsubscribe === "function") {
-          addUnsubscriber(unsubscribe);
-        } else if (typeof library.off === "function") {
-          addUnsubscriber(function () {
-            library.off(name, callback);
-          });
-        }
-      } catch (error) {
-        recordError(error, "library-event:" + name);
-      }
-    });
-  }
-
-  /* =========================================================
-     REFRESH
-  ========================================================= */
-
-  async function refresh() {
-    try {
-      if (
-        discovery &&
-        typeof discovery.refresh === "function"
-      ) {
-        await discovery.refresh();
+    async request(path) {
+      if (!this.baseUrl) {
+        throw new Error("Resona backend is not configured.");
       }
 
-      await loadPage(state.currentPage);
-
-      emitAppEvent("refresh", {
-        page: state.currentPage
-      });
-
-      return true;
-    } catch (error) {
-      recordError(error, "refresh");
-      notify("Resona could not refresh its content.", "error");
-      return false;
-    }
-  }
-
-  /* =========================================================
-     INITIAL ROUTE
-  ========================================================= */
-
-  function getInitialRoute() {
-    const parsed = parseRoute(window.location.hash);
-
-    if (!parsed.valid) {
-      return {
-        page: "home",
-        params: new URLSearchParams(),
-        valid: true
-      };
-    }
-
-    return parsed;
-  }
-
-  function getInitialPage() {
-    return getInitialRoute().page;
-  }
-
-  /* =========================================================
-     INITIALIZATION
-  ========================================================= */
-
-  async function init() {
-    if (state.initialized || state.initializing) {
-      return state.initialized;
-    }
-
-    state.initializing = true;
-
-    try {
-      const validation = validateModules();
-
-      if (!validation.success) {
-        notify(validation.message, "error");
-        return false;
-      }
-
-      if (ui && typeof ui.init === "function") {
-        ui.init();
-      }
-
-      if (library && typeof library.init === "function") {
-        library.init();
-      }
-
-      if (search && typeof search.init === "function") {
-        search.init();
-      }
-
-      bindNavigation();
-      bindSearchInputs();
-      bindSearchFilters();
-      bindGlobalActions();
-      bindPlayerControls();
-      bindPlayerEvents();
-      bindLibraryEvents();
-
-      if (player && typeof player.init === "function") {
-        try {
-          await player.init();
-        } catch (error) {
-          recordError(error, "player-initialization");
-        }
-      }
-
-      if (
-        discovery &&
-        typeof discovery.refresh === "function"
-      ) {
-        try {
-          await discovery.refresh();
-        } catch (error) {
-          recordError(error, "initial-discovery-refresh");
-        }
-      }
-
-      state.initialized = true;
-
-      const initialRoute = getInitialRoute();
-
-      await navigate(
-        initialRoute.page,
+      const response = await fetch(
+        this.baseUrl + "/" + String(path).replace(/^\/+/, ""),
         {
-          params: initialRoute.params,
-          updateHistory: false,
-          force: true
+          headers: {
+            Accept: "application/json"
+          }
         }
       );
 
-      state.lastRouteSignature =
-        getCurrentRouteSignature();
-
-      const current = getPlayerState();
-
-      if (current.currentTrack) {
-        updateNowPlaying(current.currentTrack);
+      if (!response.ok) {
+        throw new Error(
+          "API returned HTTP " + response.status
+        );
       }
 
-      updatePlaybackButtons(Boolean(current.playing));
-
-      updatePlaybackProgress({
-        player: current,
-        currentTime: current.currentTime,
-        duration: current.duration
-      });
-
-      emitAppEvent("ready", {
-        version: VERSION,
-        page: state.currentPage,
-        params: state.routeParams
-      });
-
-      log("Initialized successfully. Version:", VERSION);
-
-      return true;
-    } catch (error) {
-      recordError(error, "init");
-      notify("Resona could not initialize completely.", "error");
-      return false;
-    } finally {
-      state.initializing = false;
-    }
-  }
-
-  /* =========================================================
-     CLEANUP
-  ========================================================= */
-
-  function destroy() {
-    state.cleanup.forEach(function (cleanup) {
-      try {
-        cleanup();
-      } catch (error) {
-        recordError(error, "cleanup");
-      }
-    });
-
-    state.cleanup = [];
-
-    state.unsubscribers.forEach(function (unsubscribe) {
-      try {
-        unsubscribe();
-      } catch (error) {
-        recordError(error, "unsubscribe");
-      }
-    });
-
-    state.unsubscribers = [];
-
-    if (state.searchTimer) {
-      window.clearTimeout(state.searchTimer);
-      state.searchTimer = null;
-    }
-
-    state.searchRequestId += 1;
-
-    state.initialized = false;
-    state.initializing = false;
-
-    emitAppEvent("destroy", {});
-
-    return true;
-  }
-
-  /* =========================================================
-     PUBLIC API
-  ========================================================= */
-
-  function getState() {
-    return {
-      version: VERSION,
-      initialized: state.initialized,
-      initializing: state.initializing,
-      currentPage: state.currentPage,
-      lastPage: state.lastPage,
-      routeParams: Object.assign({}, state.routeParams),
-      currentTrack: state.currentTrack,
-      activeSearch: state.activeSearch,
-      searchRequestId: state.searchRequestId,
-      errors: state.errors.slice()
-    };
-  }
-
-  function getErrors() {
-    return state.errors.slice();
-  }
-
-  function clearErrors() {
-    state.errors = [];
-    return true;
-  }
-
-  const ResonaApp = {
-    version: VERSION,
-
-    init: init,
-    destroy: destroy,
-    refresh: refresh,
-
-    navigate: navigate,
-    getCurrentPage: function () {
-      return state.currentPage;
+      return response.json();
     },
 
-    getRouteParams: function () {
-      return Object.assign({}, state.routeParams);
-    },
+    async loadCatalogue() {
+      if (!this.baseUrl) {
+        console.info(
+          "Resona is running without a connected catalogue API."
+        );
 
-    loadPage: loadPage,
-    loadHome: loadHome,
-    loadExplore: loadExplore,
-    loadLibrary: loadLibrary,
-    loadArtists: loadArtists,
-    loadAlbums: loadAlbums,
-    loadPlaylists: loadPlaylists,
+        return false;
+      }
 
-    performSearch: performSearch,
+      state.isLoading = true;
 
-    playTrack: playTrack,
-    playTrackById: playTrackById,
-    playNext: playNext,
-    playPrevious: playPrevious,
-    togglePlayback: togglePlayback,
+      try {
+        const response = await this.request("tracks");
 
-    openPlaylist: openPlaylist,
+        const tracks = Array.isArray(response)
+          ? response
+          : response.tracks || [];
 
-    openNowPlaying: openNowPlaying,
-    closeNowPlaying: closeNowPlaying,
+        Catalogue.load(tracks);
 
-    renderTracks: renderTracks,
-    createTrackCard: createTrackCard,
+        state.isLoading = false;
 
-    exportLibrary: exportLibrary,
-    clearHistory: clearHistory,
-    clearLiked: clearLiked,
+        return true;
 
-    getState: getState,
-    getErrors: getErrors,
-    clearErrors: clearErrors
+      } catch (error) {
+        state.isLoading = false;
+
+        console.error(
+          "Resona catalogue error:",
+          error
+        );
+
+        Toast.show("Music catalogue could not be loaded.");
+
+        return false;
+      }
+    }
   };
 
-  window.ResonaApp = ResonaApp;
+  /* ==========================================================
+     17. ACTION HANDLING
+     ========================================================== */
 
-  /* =========================================================
-     AUTO START
-  ========================================================= */
+  const Actions = {
+    handle(event) {
+      const target = event.target instanceof Element
+        ? event.target
+        : event.target.parentElement;
 
-  function startApp() {
-    init();
+      if (!target) return;
+
+      /* Navigation */
+
+      const navigation = target.closest(
+        "[data-navigate], [data-page-link], [data-page-target], [data-page], a[href^='#']"
+      );
+
+      if (navigation) {
+        const destination =
+          Navigation.getDestination(navigation);
+
+        if (Navigation.pages.includes(destination)) {
+          event.preventDefault();
+          Navigation.show(destination);
+          return;
+        }
+      }
+
+      /* Track actions */
+
+      const trackButton = target.closest("[data-action]");
+
+      if (trackButton) {
+        const action = trackButton.dataset.action;
+        const id = trackButton.dataset.trackId;
+
+        if (action === "play") {
+          event.preventDefault();
+
+          Player.playTrack(id, state.tracks);
+
+          return;
+        }
+
+        if (action === "like") {
+          event.preventDefault();
+
+          const liked = Library.toggleLike(id);
+
+          Toast.show(
+            liked
+              ? "Added to liked tracks."
+              : "Removed from liked tracks."
+          );
+
+          Navigation.render(state.currentPage);
+
+          return;
+        }
+
+        if (action === "save") {
+          event.preventDefault();
+
+          const saved = Library.toggleSaved(id);
+
+          Toast.show(
+            saved
+              ? "Track saved."
+              : "Track removed from saved music."
+          );
+
+          Navigation.render(state.currentPage);
+
+          return;
+        }
+      }
+
+      /* Player buttons */
+
+      const id = target.closest(
+        "#mini-player-toggle, #player-toggle, " +
+        "#mini-player-next, #player-next, " +
+        "#mini-player-previous, #player-previous, " +
+        "#mini-player-open, #now-playing-close"
+      )?.id;
+
+      switch (id) {
+        case "mini-player-toggle":
+        case "player-toggle":
+          event.preventDefault();
+          Player.toggle();
+          return;
+
+        case "mini-player-next":
+        case "player-next":
+          event.preventDefault();
+          Player.next();
+          return;
+
+        case "mini-player-previous":
+        case "player-previous":
+          event.preventDefault();
+          Player.previous();
+          return;
+
+        case "mini-player-open":
+          event.preventDefault();
+          NowPlaying.open();
+          return;
+
+        case "now-playing-close":
+          event.preventDefault();
+          NowPlaying.close();
+          return;
+      }
+
+      /* Other actions */
+
+      const resonaAction = target.closest(
+        "[data-resona-action]"
+      );
+
+      if (resonaAction) {
+        event.preventDefault();
+
+        switch (resonaAction.dataset.resonaAction) {
+          case "clear-liked":
+            Library.clearLiked();
+            break;
+
+          case "clear-history":
+            Library.clearHistory();
+            break;
+
+          case "refresh":
+            API.loadCatalogue().then(() => {
+              Navigation.render(state.currentPage);
+              Toast.show("Music refresh completed.");
+            });
+            break;
+
+          case "shuffle":
+            state.shuffle = !state.shuffle;
+
+            Toast.show(
+              state.shuffle ? "Shuffle enabled." : "Shuffle disabled."
+            );
+            break;
+
+          case "repeat":
+            state.repeat = !state.repeat;
+
+            Toast.show(
+              state.repeat ? "Repeat enabled." : "Repeat disabled."
+            );
+            break;
+        }
+      }
+
+      /* Export */
+
+      if (
+        target.closest("#export-library-button") ||
+        target.closest("#export-library-button-settings")
+      ) {
+        event.preventDefault();
+        Library.export();
+      }
+    }
+  };
+
+  /* ==========================================================
+     18. EVENT INITIALIZATION
+     ========================================================== */
+
+  function bindEvents() {
+    if (document.body.dataset.resonaEventsBound === "true") {
+      return;
+    }
+
+    document.body.dataset.resonaEventsBound = "true";
+
+    document.addEventListener("click", event => {
+      Actions.handle(event);
+    });
+
+    /* Main search */
+
+    const searchInput = Utils.$("#search-input");
+
+    if (searchInput) {
+      searchInput.addEventListener(
+        "input",
+        Utils.debounce(() => {
+          Search.run(searchInput.value);
+        })
+      );
+    }
+
+    /* Explore search */
+
+    const exploreInput = Utils.$("#explore-search-input");
+
+    if (exploreInput) {
+      exploreInput.addEventListener(
+        "input",
+        Utils.debounce(() => {
+          const results = Catalogue.search(exploreInput.value);
+
+          const container = Utils.$(
+            "#explore-search-results"
+          );
+
+          if (!container) return;
+
+          container.innerHTML = results.length
+            ? `<div class="track-grid">
+                ${results.map(track => TrackUI.card(track)).join("")}
+               </div>`
+            : `<div class="status-text">No matching music found.</div>`;
+        })
+      );
+    }
+
+    /* Search filters */
+
+    Utils.$$("#search-filters select").forEach(select => {
+      select.addEventListener("change", () => {
+        Search.run(searchInput?.value || "");
+      });
+    });
+
+    /* Progress bar */
+
+    const progress = Utils.$("#player-progress-track");
+
+    if (progress) {
+      progress.addEventListener("click", event => {
+        const rect = progress.getBoundingClientRect();
+
+        if (!rect.width) return;
+
+        const percentage =
+          (event.clientX - rect.left) / rect.width * 100;
+
+        Player.seek(percentage);
+      });
+
+      progress.addEventListener("keydown", event => {
+        if (
+          event.key === "ArrowLeft" ||
+          event.key === "ArrowRight"
+        ) {
+          event.preventDefault();
+
+          const current = Number(
+            progress.getAttribute("aria-valuenow") || 0
+          );
+
+          Player.seek(
+            current + (event.key === "ArrowRight" ? 5 : -5)
+          );
+        }
+      });
+    }
+
+    /* Keyboard shortcuts */
+
+    document.addEventListener("keydown", event => {
+      if (
+        event.key === "Escape" &&
+        state.playerExpanded
+      ) {
+        NowPlaying.close();
+      }
+    });
   }
 
+  /* ==========================================================
+     19. INITIALIZATION
+     ========================================================== */
+
+  async function init() {
+    if (state.initialized) return;
+
+    state.initialized = true;
+
+    Library.load();
+
+    bindEvents();
+
+    await API.loadCatalogue();
+
+    const savedPage = Utils.read(
+      "last_page",
+      "home"
+    );
+
+    const initialPage =
+      Navigation.pages.includes(savedPage)
+        ? savedPage
+        : "home";
+
+    Navigation.show(initialPage);
+
+    const nowPlaying = Utils.$("#now-playing");
+
+    if (nowPlaying) {
+      nowPlaying.hidden = true;
+      nowPlaying.setAttribute("aria-hidden", "true");
+    }
+
+    const mini = Utils.$("#mini-player");
+
+    if (mini) {
+      mini.hidden = true;
+    }
+
+    const year = Utils.$("#resona-year");
+
+    if (year) {
+      year.textContent = new Date().getFullYear();
+    }
+
+    console.info("Resona initialized.");
+    console.info("Catalogue tracks:", state.tracks.length);
+  }
+
+  /* ==========================================================
+     20. PUBLIC API
+     ========================================================== */
+
+  const Resona = {
+    config,
+    state,
+
+    utils: Utils,
+    toast: Toast,
+
+    catalogue: Catalogue,
+    library: Library,
+
+    navigation: Navigation,
+    home: Home,
+    explore: Explore,
+    search: Search,
+
+    player: Player,
+    nowPlaying: NowPlaying,
+
+    api: API,
+
+    init
+  };
+
+  window.Resona = Resona;
+
+  window.ResonaNavigation = Navigation;
+  window.ResonaPlayer = Player;
+
+  /* Legacy compatibility */
+
+  window.showPage = (page, button) => {
+    Navigation.show(page, button);
+  };
+
+  window.togglePlay = () => Player.toggle();
+  window.nextSong = () => Player.next();
+  window.prevSong = () => Player.previous();
+
+  window.openNowPlaying = () => NowPlaying.open();
+  window.closeNowPlaying = () => NowPlaying.close();
+
+  /* Start application */
+
   if (document.readyState === "loading") {
-    addHandler(
-      document,
+    document.addEventListener(
       "DOMContentLoaded",
-      startApp,
+      init,
       { once: true }
     );
   } else {
-    startApp();
+    init();
   }
 
-})(window, document);
+})();
