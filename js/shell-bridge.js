@@ -2,21 +2,13 @@
    RESONA SHELL BRIDGE
    Connects the Resona application to shell.html.
 
-   Responsibilities:
-   - Communicate with the persistent shell audio player.
-   - Control playback, queue, shuffle and repeat.
-   - Receive player state and playback events.
-   - Navigate internally using SPA hash routes.
-   - Support legacy standalone-page navigation.
-   - Maintain secure postMessage communication.
-
    Architecture:
    shell.html owns the persistent audio engine.
    index.html owns the application interface.
    js/app.js owns internal SPA navigation.
-   This bridge connects the two.
 
-   Version: 1.1.0
+   Software Version: 1.2.0
+   Message Protocol: 1.0.0
 ========================================================= */
 
 (function () {
@@ -24,8 +16,16 @@
 
   if (window.ResonaShellBridge) return;
 
-  const VERSION = "1.1.0";
-  const MESSAGE_TIMEOUT = 5000;
+  /* =======================================================
+     VERSIONING
+  ======================================================= */
+
+  const VERSION = "1.2.0";
+
+  // Must match shell.html PROTOCOL_VERSION.
+  const PROTOCOL_VERSION = "1.0.0";
+
+  const MESSAGE_TIMEOUT = 7000;
 
   /* =======================================================
      ENVIRONMENT
@@ -38,39 +38,6 @@
   const pendingRequests = new Map();
 
   let requestCounter = 0;
-
-  /* =======================================================
-     PLAYER STATE
-  ======================================================= */
-
-  let playerState = {
-    ready: false,
-    playing: false,
-    currentTrack: null,
-    currentTime: 0,
-    duration: 0,
-    volume: 1,
-    muted: false,
-    shuffle: false,
-    repeat: "off",
-    queue: [],
-    currentIndex: -1
-  };
-
-  /* =======================================================
-     EVENT SYSTEM
-  ======================================================= */
-
-  const listeners = {
-    state: new Set(),
-    play: new Set(),
-    pause: new Set(),
-    ended: new Set(),
-    trackchange: new Set(),
-    timeupdate: new Set(),
-    ready: new Set(),
-    error: new Set()
-  };
 
   function detectShell() {
     try {
@@ -93,8 +60,37 @@
   detectShell();
 
   /* =======================================================
-     EVENT EMISSION
+     PLAYER STATE
   ======================================================= */
+
+  let playerState = {
+    ready: false,
+    playing: false,
+    currentTrack: null,
+    currentTime: 0,
+    duration: 0,
+    volume: 0.8,
+    muted: false,
+    shuffle: false,
+    repeat: "off",
+    queue: [],
+    currentIndex: -1
+  };
+
+  /* =======================================================
+     EVENT SYSTEM
+  ======================================================= */
+
+  const listeners = {
+    state: new Set(),
+    play: new Set(),
+    pause: new Set(),
+    ended: new Set(),
+    trackchange: new Set(),
+    timeupdate: new Set(),
+    ready: new Set(),
+    error: new Set()
+  };
 
   function emit(eventName, detail) {
     const callbacks = listeners[eventName];
@@ -150,7 +146,7 @@
   }
 
   /* =======================================================
-     SEND MESSAGE TO SHELL
+     MESSAGE SENDING
   ======================================================= */
 
   function send(action, payload) {
@@ -191,7 +187,11 @@
         shellWindow.postMessage(
           {
             source: "resona-page",
-            version: VERSION,
+
+            // Important: this is the protocol version,
+            // not the bridge software version.
+            version: PROTOCOL_VERSION,
+
             action: action,
             requestId: requestId,
             payload: payload || {}
@@ -213,18 +213,94 @@
   }
 
   /* =======================================================
-     PLAYER STATE
+     STATE NORMALISATION
   ======================================================= */
 
-  function updateState(state) {
+  function normalizeState(state) {
     if (!state || typeof state !== "object") {
-      return;
+      return null;
     }
+
+    const normalized = Object.assign(
+      {},
+      state
+    );
+
+    if ("isPlaying" in normalized) {
+      normalized.playing =
+        Boolean(normalized.isPlaying);
+    }
+
+    if ("currentTrack" in normalized) {
+      normalized.currentTrack =
+        normalized.currentTrack || null;
+    }
+
+    if ("currentTime" in normalized) {
+      normalized.currentTime =
+        Math.max(
+          0,
+          Number(normalized.currentTime) || 0
+        );
+    }
+
+    if ("duration" in normalized) {
+      normalized.duration =
+        Math.max(
+          0,
+          Number(normalized.duration) || 0
+        );
+    }
+
+    if ("volume" in normalized) {
+      normalized.volume =
+        Math.max(
+          0,
+          Math.min(
+            1,
+            Number(normalized.volume) || 0
+          )
+        );
+    }
+
+    if ("muted" in normalized) {
+      normalized.muted =
+        Boolean(normalized.muted);
+    }
+
+    if ("shuffle" in normalized) {
+      normalized.shuffle =
+        Boolean(normalized.shuffle);
+    }
+
+    if ("queue" in normalized) {
+      normalized.queue =
+        Array.isArray(normalized.queue)
+          ? normalized.queue.slice()
+          : [];
+    }
+
+    if ("currentIndex" in normalized) {
+      normalized.currentIndex =
+        Number.isInteger(
+          Number(normalized.currentIndex)
+        )
+          ? Number(normalized.currentIndex)
+          : -1;
+    }
+
+    return normalized;
+  }
+
+  function updateState(state) {
+    const normalized = normalizeState(state);
+
+    if (!normalized) return;
 
     playerState = Object.assign(
       {},
       playerState,
-      state,
+      normalized,
       {
         ready: true
       }
@@ -236,15 +312,49 @@
   }
 
   function getState() {
-    return Object.assign({}, playerState, {
-      queue: Array.isArray(playerState.queue)
-        ? playerState.queue.slice()
-        : []
-    });
+    return Object.assign(
+      {},
+      playerState,
+      {
+        queue: Array.isArray(playerState.queue)
+          ? playerState.queue.slice()
+          : []
+      }
+    );
   }
 
   /* =======================================================
-     RECEIVE SHELL MESSAGES
+     MESSAGE RESPONSE HANDLING
+  ======================================================= */
+
+  function resolvePendingRequest(message) {
+    if (!message.requestId) return;
+
+    const pending = pendingRequests.get(
+      message.requestId
+    );
+
+    if (!pending) return;
+
+    clearTimeout(pending.timeout);
+
+    pendingRequests.delete(
+      message.requestId
+    );
+
+    const payload = message.payload;
+
+    pending.resolve(
+      payload && typeof payload === "object"
+        ? payload
+        : {
+            success: true
+          }
+    );
+  }
+
+  /* =======================================================
+     INCOMING SHELL MESSAGES
   ======================================================= */
 
   function handleMessage(event) {
@@ -264,32 +374,36 @@
       return;
     }
 
-    const payload = message.payload || {};
+    // Both sides must use the same protocol.
+    if (message.version !== PROTOCOL_VERSION) {
+      console.warn(
+        "[Resona Bridge] Protocol mismatch.",
+        {
+          expected: PROTOCOL_VERSION,
+          received: message.version
+        }
+      );
+
+      return;
+    }
+
+    const payload =
+      message.payload &&
+      typeof message.payload === "object"
+        ? message.payload
+        : {};
 
     /* -----------------------------------------------
        REQUEST RESPONSES
     ----------------------------------------------- */
 
-    if (message.requestId) {
-      const pending = pendingRequests.get(
-        message.requestId
-      );
+    if (
+      typeof message.action === "string" &&
+      message.action.endsWith("_RESULT")
+    ) {
+      resolvePendingRequest(message);
 
-      if (pending) {
-        clearTimeout(pending.timeout);
-
-        pendingRequests.delete(
-          message.requestId
-        );
-
-        pending.resolve(
-          payload && typeof payload === "object"
-            ? payload
-            : {
-                success: true
-              }
-        );
-      }
+      return;
     }
 
     /* -----------------------------------------------
@@ -297,6 +411,22 @@
     ----------------------------------------------- */
 
     if (message.action === "SHELL_READY") {
+      shellReady = true;
+
+      playerState.ready = true;
+
+      emit("ready", getState());
+
+      refreshState().catch(function () {});
+
+      return;
+    }
+
+    /* -----------------------------------------------
+       PAGE READY RESPONSE
+    ----------------------------------------------- */
+
+    if (message.action === "PAGE_READY") {
       shellReady = true;
 
       playerState.ready = true;
@@ -318,12 +448,6 @@
 
     /* -----------------------------------------------
        TRACK CHANGED
-
-       Supports both:
-       payload: track
-
-       and:
-       payload: { track: track }
     ----------------------------------------------- */
 
     if (message.action === "TRACK_CHANGED") {
@@ -342,7 +466,7 @@
     }
 
     /* -----------------------------------------------
-       PLAYBACK PLAY
+       PLAYBACK STARTED
     ----------------------------------------------- */
 
     if (message.action === "PLAYBACK_PLAY") {
@@ -354,7 +478,7 @@
     }
 
     /* -----------------------------------------------
-       PLAYBACK PAUSE
+       PLAYBACK PAUSED
     ----------------------------------------------- */
 
     if (message.action === "PLAYBACK_PAUSE") {
@@ -383,10 +507,16 @@
 
     if (message.action === "TIME_UPDATE") {
       playerState.currentTime =
-        Number(payload.currentTime) || 0;
+        Math.max(
+          0,
+          Number(payload.currentTime) || 0
+        );
 
       playerState.duration =
-        Number(payload.duration) || 0;
+        Math.max(
+          0,
+          Number(payload.duration) || 0
+        );
 
       emit("timeupdate", getState());
 
@@ -398,6 +528,8 @@
     ----------------------------------------------- */
 
     if (message.action === "PLAYER_ERROR") {
+      playerState.playing = false;
+
       emit("error", payload);
 
       return;
@@ -451,11 +583,15 @@
       );
     }
 
-    return Object.assign({}, track, {
-      id: id,
-      title: title,
-      audio_url: audioUrl
-    });
+    return Object.assign(
+      {},
+      track,
+      {
+        id: id,
+        title: title,
+        audio_url: audioUrl
+      }
+    );
   }
 
   /* =======================================================
@@ -464,22 +600,21 @@
 
   async function play(track, queue) {
     try {
-      const normalizedTrack = normalizeTrack(track);
+      const normalizedTrack =
+        normalizeTrack(track);
 
-      let normalizedQueue;
+      const normalizedQueue =
+        Array.isArray(queue)
+          ? queue.map(normalizeTrack)
+          : [normalizedTrack];
 
-      if (Array.isArray(queue)) {
-        normalizedQueue = queue.map(
-          normalizeTrack
-        );
-      } else {
-        normalizedQueue = [normalizedTrack];
-      }
-
-      return send("PLAY_TRACK", {
-        track: normalizedTrack,
-        queue: normalizedQueue
-      });
+      return await send(
+        "PLAY_TRACK",
+        {
+          track: normalizedTrack,
+          queue: normalizedQueue
+        }
+      );
 
     } catch (error) {
       return {
@@ -502,14 +637,16 @@
     }
 
     try {
-      const normalizedTracks = tracks.map(
-        normalizeTrack
-      );
+      const normalizedTracks =
+        tracks.map(normalizeTrack);
 
-      return send("SET_QUEUE", {
-        tracks: normalizedTracks,
-        startTrackId: startTrackId || null
-      });
+      return await send(
+        "SET_QUEUE",
+        {
+          tracks: normalizedTracks,
+          startTrackId: startTrackId || null
+        }
+      );
 
     } catch (error) {
       return {
@@ -521,11 +658,15 @@
 
   async function addToQueue(track) {
     try {
-      const normalizedTrack = normalizeTrack(track);
+      const normalizedTrack =
+        normalizeTrack(track);
 
-      return send("ADD_TO_QUEUE", {
-        track: normalizedTrack
-      });
+      return await send(
+        "ADD_TO_QUEUE",
+        {
+          track: normalizedTrack
+        }
+      );
 
     } catch (error) {
       return {
@@ -562,16 +703,22 @@
   function seek(seconds) {
     const value = Number(seconds);
 
-    if (!Number.isFinite(value) || value < 0) {
+    if (
+      !Number.isFinite(value) ||
+      value < 0
+    ) {
       return Promise.resolve({
         success: false,
         error: "Invalid seek position."
       });
     }
 
-    return send("SEEK", {
-      seconds: value
-    });
+    return send(
+      "SEEK",
+      {
+        seconds: value
+      }
+    );
   }
 
   function setVolume(volume) {
@@ -584,12 +731,15 @@
       });
     }
 
-    return send("SET_VOLUME", {
-      volume: Math.max(
-        0,
-        Math.min(1, value)
-      )
-    });
+    return send(
+      "SET_VOLUME",
+      {
+        volume: Math.max(
+          0,
+          Math.min(1, value)
+        )
+      }
+    );
   }
 
   function mute() {
@@ -601,9 +751,12 @@
   }
 
   function setShuffle(enabled) {
-    return send("SET_SHUFFLE", {
-      enabled: Boolean(enabled)
-    });
+    return send(
+      "SET_SHUFFLE",
+      {
+        enabled: Boolean(enabled)
+      }
+    );
   }
 
   function setRepeat(mode) {
@@ -620,17 +773,16 @@
       });
     }
 
-    return send("SET_REPEAT", {
-      mode: mode
-    });
+    return send(
+      "SET_REPEAT",
+      {
+        mode: mode
+      }
+    );
   }
 
   /* =======================================================
      SPA NAVIGATION
-
-     These are internal sections of index.html.
-
-     They must not trigger shell iframe reloads.
   ======================================================= */
 
   const SPA_PAGES = [
@@ -659,7 +811,9 @@
   ];
 
   function normalizePageName(page) {
-    let value = String(page || "").trim();
+    let value = String(
+      page || ""
+    ).trim();
 
     if (!value) return "";
 
@@ -683,43 +837,81 @@
     if (!query) return "";
 
     if (typeof query === "string") {
-      const cleaned = query.replace(/^\?/, "");
+      const cleaned =
+        query.replace(/^\?/, "");
 
       return cleaned
         ? "?" + cleaned
         : "";
     }
 
+    if (query instanceof URLSearchParams) {
+      const result = query.toString();
+
+      return result
+        ? "?" + result
+        : "";
+    }
+
     if (
       typeof query === "object" &&
-      !(query instanceof URLSearchParams)
+      !Array.isArray(query)
     ) {
       const params = new URLSearchParams();
 
       Object.keys(query).forEach(function (key) {
         const value = query[key];
 
-        if (value !== undefined && value !== null) {
-          params.set(key, String(value));
+        if (
+          value === undefined ||
+          value === null
+        ) {
+          return;
         }
+
+        if (Array.isArray(value)) {
+          value.forEach(function (item) {
+            params.append(
+              key,
+              String(item)
+            );
+          });
+
+          return;
+        }
+
+        params.set(
+          key,
+          String(value)
+        );
       });
 
       const result = params.toString();
 
-      return result ? "?" + result : "";
-    }
-
-    if (query instanceof URLSearchParams) {
-      const result = query.toString();
-
-      return result ? "?" + result : "";
+      return result
+        ? "?" + result
+        : "";
     }
 
     return "";
   }
 
+  function dispatchHashChange() {
+    try {
+      window.dispatchEvent(
+        new Event("hashchange")
+      );
+    } catch (error) {
+      console.warn(
+        "[Resona Bridge] Could not dispatch hashchange:",
+        error
+      );
+    }
+  }
+
   function navigate(page, query) {
-    const cleanPage = normalizePageName(page);
+    const cleanPage =
+      normalizePageName(page);
 
     if (!cleanPage) {
       return Promise.resolve({
@@ -728,7 +920,8 @@
       });
     }
 
-    const queryString = buildQueryString(query);
+    const queryString =
+      buildQueryString(query);
 
     /* -----------------------------------------------
        INTERNAL SPA NAVIGATION
@@ -742,15 +935,14 @@
         if (window.location.hash !== newHash) {
           window.location.hash = newHash;
         } else {
-          window.dispatchEvent(
-            new HashChangeEvent("hashchange")
-          );
+          dispatchHashChange();
         }
 
         return Promise.resolve({
           success: true,
           navigation: "spa",
-          page: cleanPage
+          page: cleanPage,
+          query: queryString
         });
 
       } catch (error) {
@@ -762,13 +954,11 @@
     }
 
     /* -----------------------------------------------
-       LEGACY STANDALONE NAVIGATION
-
-       Retained for pages that genuinely need a
-       separate HTML document.
+       LEGACY STANDALONE PAGE NAVIGATION
     ----------------------------------------------- */
 
-    const legacyFilename = cleanPage + ".html";
+    const legacyFilename =
+      cleanPage + ".html";
 
     if (!LEGACY_PAGES.includes(legacyFilename)) {
       return Promise.resolve({
@@ -777,9 +967,12 @@
       });
     }
 
-    return send("NAVIGATE", {
-      url: legacyFilename + queryString
-    });
+    return send(
+      "NAVIGATE",
+      {
+        url: legacyFilename + queryString
+      }
+    );
   }
 
   /* =======================================================
@@ -804,21 +997,15 @@
   }
 
   async function refreshState() {
-    const response = await send("GET_PLAYER_STATE");
+    const response =
+      await send("GET_PLAYER_STATE");
 
-    if (!response || response.success === false) {
+    if (
+      !response ||
+      response.success === false
+    ) {
       return response;
     }
-
-    /*
-       Supports both:
-
-       { state: {...}, success: true }
-
-       and the shell's direct state response:
-
-       { playing: false, currentTrack: null, ... }
-    */
 
     const candidate =
       response.state &&
@@ -845,12 +1032,42 @@
   }
 
   /* =======================================================
+     CLEANUP
+  ======================================================= */
+
+  function destroy() {
+    window.removeEventListener(
+      "message",
+      handleMessage
+    );
+
+    pendingRequests.forEach(function (pending) {
+      clearTimeout(pending.timeout);
+
+      pending.resolve({
+        success: false,
+        error: "Bridge destroyed."
+      });
+    });
+
+    pendingRequests.clear();
+
+    Object.keys(listeners).forEach(function (key) {
+      listeners[key].clear();
+    });
+
+    shellReady = false;
+  }
+
+  /* =======================================================
      PUBLIC API
   ======================================================= */
 
   window.ResonaShellBridge = Object.freeze({
 
     version: VERSION,
+
+    protocolVersion: PROTOCOL_VERSION,
 
     isInsideShell: function () {
       return isInsideShell;
@@ -892,7 +1109,9 @@
 
     refreshState: refreshState,
 
-    on: on
+    on: on,
+
+    destroy: destroy
 
   });
 
@@ -901,19 +1120,35 @@
   ======================================================= */
 
   if (isInsideShell) {
-    send("PAGE_READY", {
-      page: window.location.pathname,
-      application: "resona-spa",
-      version: VERSION
+    send(
+      "PAGE_READY",
+      {
+        page: window.location.pathname,
+        application: "resona-spa",
+        version: VERSION
+      }
+    ).then(function (response) {
+      if (
+        response &&
+        response.success !== false
+      ) {
+        shellReady = true;
+        playerState.ready = true;
+
+        emit("ready", getState());
+      }
     });
 
     setTimeout(function () {
+      if (!shellReady) return;
+
       refreshState().catch(function (error) {
         console.warn(
           "[Resona Bridge] Initial state refresh failed:",
           error
         );
       });
+
     }, 500);
   }
 
@@ -926,7 +1161,8 @@
     {
       insideShell: isInsideShell,
       architecture: "SPA",
-      shellOwnsAudio: true
+      shellOwnsAudio: true,
+      protocol: PROTOCOL_VERSION
     }
   );
 
