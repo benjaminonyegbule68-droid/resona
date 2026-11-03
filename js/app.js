@@ -1,18 +1,18 @@
 /* =========================================================
    RESONA — APPLICATION ENTRY POINT
    File: js/app.js
-   Version: 2.3.0
+   Version: 2.4.0
 
    Coordinates:
-   - api.js
-   - player.js
-   - discovery.js
-   - search.js
-   - library.js
-   - ui.js
+   api.js
+   player.js
+   discovery.js
+   search.js
+   library.js
+   ui.js
 
    Designed for the Resona SPA and persistent shell player.
-   ========================================================= */
+========================================================= */
 
 (function (window, document) {
   "use strict";
@@ -22,7 +22,7 @@
     return;
   }
 
-  const VERSION = "2.3.0";
+  const VERSION = "2.4.0";
 
   const api = window.ResonaAPI || null;
   const player = window.ResonaPlayer || null;
@@ -54,6 +54,7 @@
   const state = {
     initialized: false,
     initializing: false,
+
     currentPage: "home",
     lastPage: "home",
 
@@ -73,7 +74,7 @@
 
   /* =========================================================
      UTILITIES
-     ========================================================= */
+  ========================================================= */
 
   function log() {
     console.log.apply(
@@ -94,6 +95,7 @@
       message: error && error.message
         ? error.message
         : String(error),
+
       context: context || "application",
       timestamp: new Date().toISOString()
     };
@@ -178,6 +180,12 @@
         callback,
         options
       );
+
+      const index = state.cleanup.indexOf(cleanup);
+
+      if (index !== -1) {
+        state.cleanup.splice(index, 1);
+      }
     };
 
     state.cleanup.push(cleanup);
@@ -247,16 +255,19 @@
       : "home";
   }
 
-  /*
-   * Parse a route without losing its query parameters.
-   *
-   * Supported:
-   * #home
-   * #/home
-   * #explore?genre=afrobeats
-   * #search?q=burna%20boy
-   * #/search?q=burna%20boy
-   */
+  /* =========================================================
+     ROUTING
+
+     Supported:
+     #home
+     #/home
+     #explore?genre=afrobeats
+     #search?q=burna%20boy
+     #/search?q=burna%20boy
+
+     Unknown routes are now identified instead of silently
+     being treated as valid Home routes.
+  ========================================================= */
 
   function parseRoute(input) {
     let raw = String(input || "").trim();
@@ -264,11 +275,17 @@
     if (!raw) {
       return {
         page: "home",
-        params: new URLSearchParams()
+        params: new URLSearchParams(),
+        valid: true
       };
     }
 
-    raw = raw.replace(/^.*#/, "");
+    const hashIndex = raw.indexOf("#");
+
+    if (hashIndex !== -1) {
+      raw = raw.slice(hashIndex + 1);
+    }
+
     raw = raw.replace(/^\/+/, "");
 
     let pagePart = raw;
@@ -286,7 +303,7 @@
       .toLowerCase()
       .replace(/_/g, "-");
 
-    const page = normalizePage(pagePart);
+    const valid = VALID_PAGES.has(pagePart);
 
     let params;
 
@@ -298,8 +315,9 @@
     }
 
     return {
-      page: page,
-      params: params
+      page: valid ? pagePart : "home",
+      params: params,
+      valid: valid
     };
   }
 
@@ -309,7 +327,9 @@
     if (!params) return result;
 
     params.forEach(function (value, key) {
-      if (Object.prototype.hasOwnProperty.call(result, key)) {
+      if (
+        Object.prototype.hasOwnProperty.call(result, key)
+      ) {
         if (!Array.isArray(result[key])) {
           result[key] = [result[key]];
         }
@@ -328,7 +348,10 @@
 
     if (!input) return params;
 
-    if (input instanceof URLSearchParams) {
+    if (
+      typeof URLSearchParams !== "undefined" &&
+      input instanceof URLSearchParams
+    ) {
       input.forEach(function (value, key) {
         params.append(key, value);
       });
@@ -385,7 +408,12 @@
   }
 
   function getCurrentRouteSignature() {
-    return String(window.location.hash || "#home");
+    const parsed = parseRoute(window.location.hash);
+
+    return buildRouteHash(
+      parsed.page,
+      parsed.params
+    );
   }
 
   function normalizeList(value) {
@@ -472,7 +500,7 @@
 
   /* =========================================================
      TRACK UTILITIES
-     ========================================================= */
+  ========================================================= */
 
   function getTrackId(track) {
     if (!track || typeof track !== "object") {
@@ -629,7 +657,7 @@
 
   /* =========================================================
      MODULE VALIDATION
-     ========================================================= */
+  ========================================================= */
 
   function validateModules() {
     const missing = MODULES.filter(function (name) {
@@ -661,7 +689,7 @@
 
   /* =========================================================
      PAGE MANAGEMENT
-     ========================================================= */
+  ========================================================= */
 
   function getPageElements() {
     const ids = [
@@ -741,8 +769,7 @@
     getElements(
       "[data-navigate],[data-page-link],.nav-link"
     ).forEach(function (element) {
-      const active =
-        getNavigationPage(element) === page;
+      const active = getNavigationPage(element) === page;
 
       element.classList.toggle("active", active);
       element.classList.toggle("is-active", active);
@@ -757,7 +784,7 @@
 
   /* =========================================================
      DISCOVERY
-     ========================================================= */
+  ========================================================= */
 
   function callDiscovery(method, options) {
     if (
@@ -778,7 +805,7 @@
 
   /* =========================================================
      TRACK CARDS
-     ========================================================= */
+  ========================================================= */
 
   function createFallbackTrackCard(track, options) {
     const settings = options || {};
@@ -787,8 +814,7 @@
     card.className = "resona-track-card";
     card.dataset.trackId = getTrackId(track);
 
-    const artworkButton =
-      document.createElement("button");
+    const artworkButton = document.createElement("button");
 
     artworkButton.type = "button";
     artworkButton.className =
@@ -838,9 +864,7 @@
     artist.textContent = getArtistName(track);
 
     const duration = document.createElement("span");
-    duration.className =
-      "resona-track-card__duration";
-
+    duration.className = "resona-track-card__duration";
     duration.textContent = getTrackDuration(track);
 
     card.appendChild(artworkButton);
@@ -977,7 +1001,7 @@
 
   /* =========================================================
      HOME
-     ========================================================= */
+  ========================================================= */
 
   async function loadHome() {
     const sections = [
@@ -1061,7 +1085,7 @@
 
   /* =========================================================
      ENTITY CARDS
-     ========================================================= */
+  ========================================================= */
 
   function renderSimpleEntityCards(container, items, type) {
     if (!container) return;
@@ -1141,7 +1165,7 @@
 
   /* =========================================================
      EXPLORE
-     ========================================================= */
+  ========================================================= */
 
   function getExploreFilters() {
     const params = state.routeParams || {};
@@ -1235,7 +1259,7 @@
 
   /* =========================================================
      SEARCH
-     ========================================================= */
+  ========================================================= */
 
   function getSearchResultsContainer() {
     if (state.currentPage === "explore") {
@@ -1457,7 +1481,9 @@
       updateSearchStatus(
         total === 0
           ? "No results found."
-          : total + (total === 1 ? " result found." : " results found.")
+          : total + (total === 1
+            ? " result found."
+            : " results found.")
       );
 
       announce(
@@ -1570,11 +1596,6 @@
     });
   }
 
-  /*
-   * Apply search query from route parameters.
-   * Example: #search?q=burna%20boy
-   */
-
   async function loadSearchFromRoute() {
     const params = state.routeParams || {};
 
@@ -1625,7 +1646,7 @@
 
   /* =========================================================
      LIBRARY
-     ========================================================= */
+  ========================================================= */
 
   function renderLibrarySection(selectors, tracks, options) {
     const container = findFirstElement(selectors);
@@ -1708,7 +1729,7 @@
 
   /* =========================================================
      ARTISTS AND ALBUMS
-     ========================================================= */
+  ========================================================= */
 
   async function loadArtists() {
     const container = findFirstElement([
@@ -1758,7 +1779,7 @@
 
   /* =========================================================
      PLAYLISTS
-     ========================================================= */
+  ========================================================= */
 
   function renderPlaylistCards(container, playlists) {
     if (!container) return;
@@ -1793,6 +1814,7 @@
       card.className = "resona-playlist-card";
 
       const title = document.createElement("h3");
+
       title.textContent = String(
         playlist.name || "Untitled playlist"
       );
@@ -1902,7 +1924,7 @@
 
   /* =========================================================
      NAVIGATION
-     ========================================================= */
+  ========================================================= */
 
   async function loadPage(page) {
     switch (normalizePage(page)) {
@@ -1939,14 +1961,17 @@
   async function navigate(page, options) {
     const settings = options || {};
 
-    /*
-     * A caller may pass:
-     * navigate("explore?genre=afrobeats")
-     * navigate("explore", { query: { genre: "afrobeats" } })
-     * navigate("search", { params: { q: "Burna Boy" } })
-     */
-
     const parsed = parseRoute(page);
+
+    if (!parsed.valid) {
+      warn("Invalid Resona route:", page);
+
+      return {
+        success: false,
+        invalidRoute: true,
+        page: parsed.page
+      };
+    }
 
     const selected = parsed.page;
 
@@ -1961,13 +1986,10 @@
     }
 
     const nextParams = paramsToObject(params);
-
     const nextHash = buildRouteHash(selected, params);
-
     const currentHash = getCurrentRouteSignature();
 
-    const samePage =
-      selected === state.currentPage;
+    const samePage = selected === state.currentPage;
 
     const sameParams =
       JSON.stringify(nextParams) ===
@@ -1978,6 +2000,40 @@
       sameParams &&
       !settings.force
     ) {
+      if (
+        settings.updateHistory !== false &&
+        currentHash !== nextHash
+      ) {
+        try {
+          const url = new URL(window.location.href);
+          url.hash = nextHash;
+
+          if (settings.replaceHistory) {
+            window.history.replaceState(
+              {
+                resonaPage: selected,
+                resonaParams: nextParams
+              },
+              "",
+              url
+            );
+          } else {
+            window.history.pushState(
+              {
+                resonaPage: selected,
+                resonaParams: nextParams
+              },
+              "",
+              url
+            );
+          }
+        } catch (error) {
+          recordError(error, "navigation-history");
+        }
+      }
+
+      state.lastRouteSignature = nextHash;
+
       return {
         success: true,
         page: selected,
@@ -1998,7 +2054,6 @@
     if (settings.updateHistory !== false) {
       try {
         const url = new URL(window.location.href);
-
         url.hash = nextHash;
 
         if (settings.replaceHistory) {
@@ -2091,7 +2146,16 @@
 
     const parsed = parseRoute(destination);
 
-    if (!VALID_PAGES.has(parsed.page)) return;
+    /*
+      Do not intercept ordinary page anchors such as:
+      #about
+      #contact
+      #section-name
+
+      Only known Resona routes are handled here.
+    */
+
+    if (!parsed.valid) return;
 
     event.preventDefault();
 
@@ -2100,12 +2164,17 @@
     });
   }
 
-  /*
-   * Browser Back and Forward.
-   */
-
   function handlePopState() {
     const parsed = parseRoute(window.location.hash);
+
+    if (!parsed.valid) {
+      navigate("home", {
+        updateHistory: false,
+        force: true
+      });
+
+      return;
+    }
 
     navigate(parsed.page, {
       params: parsed.params,
@@ -2114,14 +2183,6 @@
     });
   }
 
-  /*
-   * Hash changes from shell-bridge.js and direct links.
-   *
-   * The route signature check prevents the browser's
-   * popstate + hashchange pair from loading the same route
-   * twice.
-   */
-
   function handleHashChange() {
     const signature = getCurrentRouteSignature();
 
@@ -2129,7 +2190,12 @@
       return;
     }
 
-    const parsed = parseRoute(signature);
+    const parsed = parseRoute(window.location.hash);
+
+    if (!parsed.valid) {
+      warn("Ignoring unknown hash route:", window.location.hash);
+      return;
+    }
 
     navigate(parsed.page, {
       params: parsed.params,
@@ -2146,7 +2212,7 @@
 
   /* =========================================================
      PLAYER STATE
-     ========================================================= */
+  ========================================================= */
 
   function getPlayerState() {
     if (!player || typeof player.getState !== "function") {
@@ -2311,6 +2377,7 @@
     if (track) {
       track.setAttribute("aria-valuemin", "0");
       track.setAttribute("aria-valuemax", "100");
+
       track.setAttribute(
         "aria-valuenow",
         String(Math.round(progress * 100))
@@ -2361,7 +2428,7 @@
 
   /* =========================================================
      PLAYER OPERATIONS
-     ========================================================= */
+  ========================================================= */
 
   async function playTrack(track, options) {
     if (!player || typeof player.playTrack !== "function") {
@@ -2618,7 +2685,7 @@
 
   /* =========================================================
      PLAYER EVENTS
-     ========================================================= */
+  ========================================================= */
 
   function handlePlayerEvent(type, detail) {
     detail = detail || {};
@@ -2749,7 +2816,7 @@
 
   /* =========================================================
      PLAYER CONTROLS
-     ========================================================= */
+  ========================================================= */
 
   function bindPlayerControls() {
     const open = getElement("#mini-player-open");
@@ -2852,7 +2919,7 @@
 
   /* =========================================================
      LIBRARY EXPORT
-     ========================================================= */
+  ========================================================= */
 
   function exportLibrary() {
     if (
@@ -2912,7 +2979,7 @@
 
   /* =========================================================
      CONFIRMATION AND LIBRARY ACTIONS
-     ========================================================= */
+  ========================================================= */
 
   async function confirmAction(title, message) {
     if (ui && typeof ui.confirm === "function") {
@@ -2991,7 +3058,7 @@
 
   /* =========================================================
      GLOBAL ACTIONS
-     ========================================================= */
+  ========================================================= */
 
   async function handleGlobalAction(action, element) {
     switch (action) {
@@ -3088,7 +3155,7 @@
 
   /* =========================================================
      LIBRARY EVENTS
-     ========================================================= */
+  ========================================================= */
 
   function bindLibraryEvents() {
     if (!library || typeof library.on !== "function") {
@@ -3140,7 +3207,7 @@
 
   /* =========================================================
      REFRESH
-     ========================================================= */
+  ========================================================= */
 
   async function refresh() {
     try {
@@ -3167,10 +3234,20 @@
 
   /* =========================================================
      INITIAL ROUTE
-     ========================================================= */
+  ========================================================= */
 
   function getInitialRoute() {
-    return parseRoute(window.location.hash);
+    const parsed = parseRoute(window.location.hash);
+
+    if (!parsed.valid) {
+      return {
+        page: "home",
+        params: new URLSearchParams(),
+        valid: true
+      };
+    }
+
+    return parsed;
   }
 
   function getInitialPage() {
@@ -3179,7 +3256,7 @@
 
   /* =========================================================
      INITIALIZATION
-     ========================================================= */
+  ========================================================= */
 
   async function init() {
     if (state.initialized || state.initializing) {
@@ -3285,7 +3362,7 @@
 
   /* =========================================================
      CLEANUP
-     ========================================================= */
+  ========================================================= */
 
   function destroy() {
     state.cleanup.forEach(function (cleanup) {
@@ -3325,7 +3402,7 @@
 
   /* =========================================================
      PUBLIC API
-     ========================================================= */
+  ========================================================= */
 
   function getState() {
     return {
@@ -3404,14 +3481,15 @@
 
   /* =========================================================
      AUTO START
-     ========================================================= */
+  ========================================================= */
 
   function startApp() {
     init();
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener(
+    addHandler(
+      document,
       "DOMContentLoaded",
       startApp,
       { once: true }
