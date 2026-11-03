@@ -133,42 +133,12 @@ const RESONA_CONTINENTS = [
 ];
 
 const RESONA_MOODS = [
-    {
-        id: "calm",
-        label: "Calm",
-        emoji: "🌙",
-        description: "Quiet moments and gentle sounds"
-    },
-    {
-        id: "energetic",
-        label: "Energetic",
-        emoji: "⚡",
-        description: "Music that gets you moving"
-    },
-    {
-        id: "melancholy",
-        label: "Melancholy",
-        emoji: "🌧️",
-        description: "Reflective and emotional sounds"
-    },
-    {
-        id: "focus",
-        label: "Focus",
-        emoji: "🎧",
-        description: "Music for concentration"
-    },
-    {
-        id: "party",
-        label: "Party",
-        emoji: "🎉",
-        description: "Music for celebrations"
-    },
-    {
-        id: "night",
-        label: "Night",
-        emoji: "🌃",
-        description: "Sounds for late hours"
-    }
+    { id: "calm", label: "Calm", emoji: "🌙", description: "Quiet moments and gentle sounds" },
+    { id: "energetic", label: "Energetic", emoji: "⚡", description: "Music that gets you moving" },
+    { id: "melancholy", label: "Melancholy", emoji: "🌧️", description: "Reflective and emotional sounds" },
+    { id: "focus", label: "Focus", emoji: "🎧", description: "Music for concentration" },
+    { id: "party", label: "Party", emoji: "🎉", description: "Music for celebrations" },
+    { id: "night", label: "Night", emoji: "🌃", description: "Sounds for late hours" }
 ];
 
 
@@ -186,16 +156,13 @@ const ResonaUtils = {
     },
 
     escape(value) {
-        return String(value ?? "").replace(
-            /[&<>"']/g,
-            character => ({
-                "&": "&amp;",
-                "<": "&lt;",
-                ">": "&gt;",
-                '"': "&quot;",
-                "'": "&#39;"
-            })[character]
-        );
+        return String(value ?? "").replace(/[&<>"']/g, character => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        })[character]);
     },
 
     storageKey(key) {
@@ -204,13 +171,8 @@ const ResonaUtils = {
 
     readStorage(key, fallback = null) {
         try {
-            const value = localStorage.getItem(
-                this.storageKey(key)
-            );
-
-            return value === null
-                ? fallback
-                : JSON.parse(value);
+            const value = localStorage.getItem(this.storageKey(key));
+            return value === null ? fallback : JSON.parse(value);
         } catch (error) {
             console.warn("Resona storage read failed:", error);
             return fallback;
@@ -219,11 +181,7 @@ const ResonaUtils = {
 
     writeStorage(key, value) {
         try {
-            localStorage.setItem(
-                this.storageKey(key),
-                JSON.stringify(value)
-            );
-
+            localStorage.setItem(this.storageKey(key), JSON.stringify(value));
             return true;
         } catch (error) {
             console.warn("Resona storage write failed:", error);
@@ -232,24 +190,19 @@ const ResonaUtils = {
     },
 
     createId(prefix = "resona") {
-        if (
-            typeof crypto !== "undefined" &&
-            typeof crypto.randomUUID === "function"
-        ) {
+        if (typeof crypto !== "undefined" &&
+            typeof crypto.randomUUID === "function") {
             return prefix + "_" + crypto.randomUUID();
         }
 
-        return prefix + "_" +
-            Date.now().toString(36) + "_" +
+        return prefix + "_" + Date.now().toString(36) + "_" +
             Math.random().toString(36).slice(2);
     },
 
     formatTime(seconds) {
         const value = Number(seconds);
 
-        if (!Number.isFinite(value) || value < 0) {
-            return "0:00";
-        }
+        if (!Number.isFinite(value) || value < 0) return "0:00";
 
         return Math.floor(value / 60) + ":" +
             String(Math.floor(value % 60)).padStart(2, "0");
@@ -259,7 +212,6 @@ const ResonaUtils = {
         if (!value) return "";
 
         const date = new Date(value);
-
         if (Number.isNaN(date.getTime())) return "";
 
         return new Intl.DateTimeFormat(undefined, {
@@ -272,9 +224,7 @@ const ResonaUtils = {
     isValidHttpUrl(value) {
         try {
             const url = new URL(value);
-
-            return url.protocol === "https:" ||
-                url.protocol === "http:";
+            return url.protocol === "https:" || url.protocol === "http:";
         } catch {
             return false;
         }
@@ -296,7 +246,6 @@ const ResonaUtils = {
         if (!value) return "";
 
         const url = String(value).trim();
-
         return this.isValidHttpUrl(url) ? url : "";
     },
 
@@ -353,22 +302,16 @@ const ResonaCatalogue = {
 
         const id = String(input.id ?? input.track_id ?? "").trim();
         const title = String(input.title ?? input.name ?? "").trim();
-        const artist = String(
-            input.artist ?? input.artist_name ?? ""
-        ).trim();
+        const artist = String(input.artist ?? input.artist_name ?? "").trim();
 
         if (!id || !title || !artist) return null;
 
-        const duration = Number(
-            input.duration ?? input.duration_seconds ?? 0
-        );
+        const duration = Number(input.duration ?? input.duration_seconds ?? 0);
 
         const mood = Array.isArray(input.mood)
             ? input.mood.map(String)
             : typeof input.mood === "string"
-                ? input.mood.split(",")
-                    .map(item => item.trim())
-                    .filter(Boolean)
+                ? input.mood.split(",").map(item => item.trim()).filter(Boolean)
                 : [];
 
         return {
@@ -379,27 +322,17 @@ const ResonaCatalogue = {
             album: String(input.album ?? input.album_title ?? ""),
             albumId: String(input.albumId ?? input.album_id ?? ""),
             artwork: ResonaUtils.safeImage(
-                input.artwork ??
-                input.cover_url ??
-                input.artwork_url ??
-                ""
+                input.artwork ?? input.cover_url ?? input.artwork_url ?? ""
             ),
             audioUrl: ResonaUtils.safeAudioUrl(
-                input.audioUrl ??
-                input.audio_url ??
-                input.stream_url ??
-                ""
+                input.audioUrl ?? input.audio_url ?? input.stream_url ?? ""
             ),
-            duration: Number.isFinite(duration) && duration > 0
-                ? duration
-                : 0,
+            duration: Number.isFinite(duration) && duration > 0 ? duration : 0,
             country: String(input.country ?? "").trim(),
             continent: String(input.continent ?? "").trim().toLowerCase(),
             genre: String(input.genre ?? "").trim(),
             mood,
-            releaseDate: String(
-                input.releaseDate ?? input.release_date ?? ""
-            ),
+            releaseDate: String(input.releaseDate ?? input.release_date ?? ""),
             rightsConfirmed:
                 input.rightsConfirmed === true ||
                 input.rights_confirmed === true,
@@ -445,17 +378,12 @@ const ResonaCatalogue = {
 
     search(query) {
         const term = String(query ?? "").trim().toLowerCase();
-
         if (!term) return [];
 
         return ResonaState.tracks.filter(track => {
             const searchable = [
-                track.title,
-                track.artist,
-                track.album,
-                track.genre,
-                track.country,
-                track.continent
+                track.title, track.artist, track.album,
+                track.genre, track.country, track.continent
             ].join(" ").toLowerCase();
 
             return searchable.includes(term);
@@ -463,15 +391,14 @@ const ResonaCatalogue = {
     },
 
     byContinent(continent) {
-        return ResonaState.tracks.filter(track =>
-            track.continent === String(continent).toLowerCase()
+        return ResonaState.tracks.filter(
+            track => track.continent === String(continent).toLowerCase()
         );
     },
 
     byCountry(country) {
-        return ResonaState.tracks.filter(track =>
-            track.country.toLowerCase() ===
-            String(country).toLowerCase()
+        return ResonaState.tracks.filter(
+            track => track.country.toLowerCase() === String(country).toLowerCase()
         );
     },
 
@@ -508,25 +435,16 @@ const ResonaLibrary = {
         const id = String(trackId);
 
         if (this.isLiked(id)) {
-            ResonaState.likedTracks =
-                ResonaState.likedTracks.filter(
-                    item => String(item) !== id
-                );
-
-            ResonaUtils.writeStorage(
-                "liked_tracks",
-                ResonaState.likedTracks
+            ResonaState.likedTracks = ResonaState.likedTracks.filter(
+                item => String(item) !== id
             );
 
+            ResonaUtils.writeStorage("liked_tracks", ResonaState.likedTracks);
             return false;
         }
 
         ResonaState.likedTracks.push(id);
-
-        ResonaUtils.writeStorage(
-            "liked_tracks",
-            ResonaState.likedTracks
-        );
+        ResonaUtils.writeStorage("liked_tracks", ResonaState.likedTracks);
 
         return true;
     },
@@ -547,15 +465,9 @@ const ResonaLibrary = {
         });
 
         ResonaState.listeningHistory =
-            ResonaState.listeningHistory.slice(
-                0,
-                ResonaConfig.maxHistory
-            );
+            ResonaState.listeningHistory.slice(0, ResonaConfig.maxHistory);
 
-        ResonaUtils.writeStorage(
-            "history",
-            ResonaState.listeningHistory
-        );
+        ResonaUtils.writeStorage("history", ResonaState.listeningHistory);
     },
 
     getLiked() {
@@ -575,44 +487,97 @@ const ResonaLibrary = {
 
     clearHistory() {
         ResonaState.listeningHistory = [];
-
         ResonaUtils.writeStorage("history", []);
-
         ResonaToast.show("Listening history cleared.");
-
         ResonaLibraryPage.render();
     }
 };
 
 
 /* =========================================================
-   8. PAGE NAVIGATION
-   Supports data-page buttons AND legacy showPage handlers.
+   8. IMPROVED PAGE NAVIGATION
    ========================================================= */
 
 const ResonaNavigation = {
-    pages: [
-        "home",
-        "explore",
-        "search",
-        "library",
-        "artist",
-        "reset"
-    ],
+    pages: ["home", "explore", "search", "library", "artist", "reset"],
+
+    aliases: {
+        discover: "explore",
+        discovery: "explore",
+        studio: "artist",
+        "artist-studio": "artist",
+        artists: "artist",
+        moods: "reset",
+        mood: "reset",
+        "mood-reset": "reset",
+        favourites: "library",
+        favorites: "library",
+        music: "home"
+    },
+
+    normalizePage(value) {
+        if (!value) return "";
+
+        let page = String(value).trim().toLowerCase();
+
+        page = page.replace(/^https?:\/\/[^/]+/i, "");
+        page = page.replace(/[?#].*$/, "");
+        page = page.replace(/^\/+|\/+$/g, "");
+        page = page.replace(/^#/, "");
+        page = page.replace(/^page-/, "");
+
+        if (page.includes("/")) {
+            page = page.split("/").filter(Boolean).pop() || "";
+        }
+
+        page = this.aliases[page] || page;
+
+        return this.pages.includes(page) ? page : "";
+    },
+
+    resolveDestination(element) {
+        if (!element) return "";
+
+        const candidates = [
+            element.dataset.page,
+            element.dataset.pageTarget,
+            element.dataset.navigate,
+            element.dataset.nav,
+            element.dataset.route,
+            element.dataset.href,
+            element.dataset.target,
+            element.getAttribute("aria-controls"),
+            element.getAttribute("href")
+        ];
+
+        for (const candidate of candidates) {
+            const page = this.normalizePage(candidate);
+            if (page) return page;
+        }
+
+        return "";
+    },
 
     ensurePage(id, title) {
         let page = ResonaUtils.$("#page-" + id);
-
         if (page) return page;
 
-        const main = ResonaUtils.$("#main");
+        let main =
+            ResonaUtils.$("#main") ||
+            ResonaUtils.$("main") ||
+            ResonaUtils.$("[data-main]");
 
-        if (!main) return null;
+        if (!main) {
+            main = document.createElement("main");
+            main.id = "main";
+            document.body.appendChild(main);
+        }
 
         page = document.createElement("section");
         page.id = "page-" + id;
         page.className = "page";
         page.setAttribute("aria-label", title);
+        page.setAttribute("aria-hidden", "true");
 
         page.innerHTML = `
             <div class="page-heading">
@@ -622,7 +587,6 @@ const ResonaNavigation = {
         `;
 
         main.appendChild(page);
-
         return page;
     },
 
@@ -635,10 +599,59 @@ const ResonaNavigation = {
         this.ensurePage("reset", "Reset your mood");
     },
 
-    show(pageName, button = null) {
-        const target = String(pageName || "home");
+    updateNavigationState(target) {
+        const selectors = [
+            "[data-page]",
+            "[data-page-target]",
+            "[data-navigate]",
+            "[data-nav]",
+            "[data-route]",
+            "[data-target]",
+            "nav a",
+            "nav button",
+            "[role='navigation'] a",
+            "[role='navigation'] button"
+        ].join(",");
 
-        if (!this.pages.includes(target)) {
+        ResonaUtils.$$(selectors).forEach(element => {
+            const destination = this.resolveDestination(element);
+
+            element.classList.remove("active", "on");
+            element.removeAttribute("aria-current");
+
+            if (destination === target) {
+                element.classList.add("active", "on");
+                element.setAttribute("aria-current", "page");
+            }
+        });
+    },
+
+    updateHistory(target, options = {}) {
+        if (options.history === false) return;
+        if (!window.history || !window.history.pushState) return;
+
+        const currentHash = window.location.hash.replace(/^#/, "");
+
+        if (this.normalizePage(currentHash) === target) {
+            window.history.replaceState(
+                { resonaPage: target },
+                "",
+                window.location.pathname + window.location.search + "#" + target
+            );
+            return;
+        }
+
+        window.history.pushState(
+            { resonaPage: target },
+            "",
+            window.location.pathname + window.location.search + "#" + target
+        );
+    },
+
+    show(pageName, button = null, options = {}) {
+        const target = this.normalizePage(pageName);
+
+        if (!target) {
             ResonaToast.show("That page is not available.");
             return false;
         }
@@ -663,40 +676,23 @@ const ResonaNavigation = {
 
         ResonaUtils.writeStorage("last_page", target);
 
-        /*
-         * FIX:
-         * The replacement HTML uses data-page, not only onclick.
-         * Match both patterns for compatibility.
-         */
-        ResonaUtils.$$("nav button, [data-page]").forEach(navButton => {
-            const buttonPage =
-                navButton.dataset.page ||
-                navButton.getAttribute("data-page");
+        this.updateNavigationState(target);
+        this.updateHistory(target, options);
 
-            navButton.classList.remove("active", "on");
-            navButton.removeAttribute("aria-current");
-
-            if (buttonPage === target) {
-                navButton.classList.add("active", "on");
-                navButton.setAttribute("aria-current", "page");
-            }
-        });
-
-        if (button && button instanceof Element) {
+        if (button instanceof Element) {
             button.classList.add("active", "on");
             button.setAttribute("aria-current", "page");
         }
 
         this.renderPage(target);
 
-        const main = ResonaUtils.$("#main");
+        const main =
+            ResonaUtils.$("#main") ||
+            ResonaUtils.$("main");
 
         if (main) main.scrollTop = 0;
 
-        window.scrollTo({
-            top: 0,
-            behavior: "auto"
-        });
+        window.scrollTo({ top: 0, behavior: "auto" });
 
         return true;
     },
@@ -706,27 +702,32 @@ const ResonaNavigation = {
             case "home":
                 ResonaHome.render();
                 break;
-
             case "explore":
                 ResonaExplore.render();
                 break;
-
             case "search":
                 ResonaSearch.render();
                 break;
-
             case "library":
                 ResonaLibraryPage.render();
                 break;
-
             case "artist":
                 ResonaArtistStudio.render();
                 break;
-
             case "reset":
                 ResonaReset.render();
                 break;
         }
+    },
+
+    handlePopState(event) {
+        const statePage = event.state?.resonaPage;
+        const hashPage = this.normalizePage(window.location.hash);
+        const target = this.normalizePage(statePage) ||
+            hashPage ||
+            "home";
+
+        this.show(target, null, { history: false });
     }
 };
 
@@ -777,9 +778,7 @@ const ResonaTrackUI = {
                     <span class="tt">${ResonaUtils.escape(track.title)}</span>
                     <span class="tag">
                         ${ResonaUtils.escape(track.artist)}
-                        ${track.album
-                            ? " · " + ResonaUtils.escape(track.album)
-                            : ""}
+                        ${track.album ? " · " + ResonaUtils.escape(track.album) : ""}
                     </span>
                 </button>
 
@@ -832,7 +831,6 @@ const ResonaTrackUI = {
                             class="icon-button"
                             data-action="play"
                             data-track-id="${ResonaUtils.escape(track.id)}"
-                            aria-label="Play track"
                         >▶</button>
 
                         <button
@@ -841,7 +839,6 @@ const ResonaTrackUI = {
                             data-action="like"
                             data-track-id="${ResonaUtils.escape(track.id)}"
                             aria-pressed="${liked}"
-                            aria-label="${liked ? "Unlike" : "Like"} track"
                         >${liked ? "♥" : "♡"}</button>
                     </div>
                 </div>
@@ -854,9 +851,7 @@ const ResonaTrackUI = {
             <div class="empty-state">
                 <div class="empty-icon">♫</div>
                 <h3>${ResonaUtils.escape(message)}</h3>
-                ${description
-                    ? `<p>${ResonaUtils.escape(description)}</p>`
-                    : ""}
+                ${description ? `<p>${ResonaUtils.escape(description)}</p>` : ""}
             </div>
         `;
     },
@@ -906,9 +901,7 @@ const ResonaHome = {
         });
 
         const featured = ResonaState.tracks.filter(track => track.featured);
-        const recommendations = featured.length
-            ? featured
-            : ResonaState.tracks;
+        const recommendations = featured.length ? featured : ResonaState.tracks;
 
         page.innerHTML = `
             <header class="home-header">
@@ -918,12 +911,9 @@ const ResonaHome = {
                     <p class="muted">Music and artists from around the world.</p>
                 </div>
 
-                <button
-                    type="button"
-                    class="icon-button"
-                    data-page="search"
-                    aria-label="Search music"
-                >⌕</button>
+                <button type="button" class="icon-button" data-page="search">
+                    ⌕
+                </button>
             </header>
 
             <section class="hero">
@@ -931,7 +921,6 @@ const ResonaHome = {
                     <p class="eyebrow">A WORLD OF MUSIC</p>
                     <h2>One world.<br>Countless sounds.</h2>
                     <p>Find new artists, explore cultures, and discover music beyond borders.</p>
-
                     <button type="button" class="cta" data-page="explore">
                         Explore music
                     </button>
@@ -1049,15 +1038,11 @@ const ResonaExplore = {
                 </div>
             </section>
 
-            ${ResonaTrackUI.section(
-                "Music from around the world",
-                ResonaState.tracks,
-                {
-                    limit: 20,
-                    emptyTitle: "The world is waiting to be heard",
-                    emptyDescription: "Connect the catalogue API to discover real tracks from artists worldwide."
-                }
-            )}
+            ${ResonaTrackUI.section("Music from around the world", ResonaState.tracks, {
+                limit: 20,
+                emptyTitle: "The world is waiting to be heard",
+                emptyDescription: "Connect the catalogue API to discover real tracks from artists worldwide."
+            })}
         `;
     },
 
@@ -1118,8 +1103,7 @@ const ResonaExplore = {
     },
 
     openContinent(id) {
-        const exists = RESONA_CONTINENTS.some(item => item.id === id);
-        if (!exists) return;
+        if (!RESONA_CONTINENTS.some(item => item.id === id)) return;
 
         ResonaState.selectedContinent = String(id);
         ResonaState.selectedCountry = "";
@@ -1205,11 +1189,7 @@ const ResonaSearch = {
         if (form) {
             form.addEventListener("submit", event => {
                 event.preventDefault();
-
-                ResonaState.searchQuery = input
-                    ? input.value.trim()
-                    : "";
-
+                ResonaState.searchQuery = input ? input.value.trim() : "";
                 this.render();
             });
         }
@@ -1218,22 +1198,18 @@ const ResonaSearch = {
             input.addEventListener("input", event => {
                 ResonaState.searchQuery = event.target.value.trim();
 
-                const resultsElement = ResonaUtils.$(
-                    "#resonaSearchResults",
-                    page
-                );
+                const resultsElement = ResonaUtils.$("#resonaSearchResults", page);
 
                 if (resultsElement) {
-                    resultsElement.innerHTML =
-                        ResonaState.searchQuery
-                            ? this.renderResults(
-                                ResonaCatalogue.search(ResonaState.searchQuery),
-                                ResonaState.searchQuery
-                            )
-                            : ResonaTrackUI.empty(
-                                "Start searching",
-                                "Search for a title, artist, genre, album, or country."
-                            );
+                    resultsElement.innerHTML = ResonaState.searchQuery
+                        ? this.renderResults(
+                            ResonaCatalogue.search(ResonaState.searchQuery),
+                            ResonaState.searchQuery
+                        )
+                        : ResonaTrackUI.empty(
+                            "Start searching",
+                            "Search for a title, artist, genre, album, or country."
+                        );
                 }
             });
         }
@@ -1291,7 +1267,6 @@ const ResonaLibraryPage = {
                 <section class="resona-section">
                     <div class="section-heading">
                         <h2>Recently played</h2>
-
                         ${history.length
                             ? `<button type="button" class="text-button" data-action="clear-history">
                                 Clear history
@@ -1559,13 +1534,8 @@ const ResonaPlayer = {
         audio.preload = "metadata";
         audio.src = track.audioUrl;
 
-        audio.addEventListener("loadedmetadata", () => {
-            this.updateProgress();
-        });
-
-        audio.addEventListener("timeupdate", () => {
-            this.updateProgress();
-        });
+        audio.addEventListener("loadedmetadata", () => this.updateProgress());
+        audio.addEventListener("timeupdate", () => this.updateProgress());
 
         audio.addEventListener("play", () => {
             ResonaState.isPlaying = true;
@@ -1612,7 +1582,6 @@ const ResonaPlayer = {
                 this.updatePlayerUI();
 
                 console.warn("Resona playback failed:", error);
-
                 ResonaToast.show(
                     "Playback could not start. Check the audio source and browser permissions."
                 );
@@ -1633,9 +1602,7 @@ const ResonaPlayer = {
                     ResonaState.isPlaying = true;
                     this.updatePlayerUI();
                 })
-                .catch(() => {
-                    ResonaToast.show("Unable to resume playback.");
-                });
+                .catch(() => ResonaToast.show("Unable to resume playback."));
         } else {
             audio.pause();
         }
@@ -1692,12 +1659,29 @@ const ResonaPlayer = {
 
     seek(value) {
         const audio = this.getAudio();
-
         if (!audio || !Number.isFinite(audio.duration)) return;
 
         const percentage = Math.max(0, Math.min(100, Number(value) || 0));
-
         audio.currentTime = audio.duration * percentage / 100;
+    },
+
+    seekFromElement(element, event) {
+        if (!element) return;
+
+        if ("value" in element && element.type === "range") {
+            this.seek(element.value);
+            return;
+        }
+
+        const rect = element.getBoundingClientRect();
+        if (!rect.width) return;
+
+        const percentage = Math.max(
+            0,
+            Math.min(100, ((event.clientX - rect.left) / rect.width) * 100)
+        );
+
+        this.seek(percentage);
     },
 
     updateProgress() {
@@ -1708,43 +1692,40 @@ const ResonaPlayer = {
             ? audio.duration
             : (ResonaState.currentTrack?.duration || 0);
 
-        const percentage = duration > 0
-            ? currentTime / duration * 100
-            : 0;
+        const percentage = duration > 0 ? currentTime / duration * 100 : 0;
 
-        /*
-         * Support the old player IDs and the IDs in the new index.html.
-         */
-        const seekBar =
-            ResonaUtils.$("#seekBar") ||
-            ResonaUtils.$("#miniProgressTrack") ||
-            ResonaUtils.$("#npProgressTrack");
+        const rangeSelectors = [
+            "#seekBar",
+            "#miniProgressTrack",
+            "#npProgressTrack"
+        ];
 
-        if (seekBar && "value" in seekBar) {
-            seekBar.value = String(percentage);
-            seekBar.setAttribute("aria-valuenow", String(Math.round(percentage)));
-        }
+        rangeSelectors.forEach(selector => {
+            const element = ResonaUtils.$(selector);
 
-        const miniProgress = ResonaUtils.$("#miniProgress");
-        if (miniProgress) {
-            miniProgress.style.width = percentage + "%";
-        }
+            if (element && element.type === "range") {
+                element.value = String(percentage);
+                element.setAttribute(
+                    "aria-valuenow",
+                    String(Math.round(percentage))
+                );
+            }
+        });
 
-        const npProgress = ResonaUtils.$("#npProgress");
-        if (npProgress) {
-            npProgress.style.width = percentage + "%";
-        }
+        ["#miniProgress", "#npProgress"].forEach(selector => {
+            const element = ResonaUtils.$(selector);
+            if (element) element.style.width = percentage + "%";
+        });
 
-        /*
-         * If the HTML uses progress tracks instead of range inputs,
-         * update their visual fill without changing the track element.
-         */
         ["#miniProgressTrack", "#npProgressTrack"].forEach(selector => {
             const element = ResonaUtils.$(selector);
 
-            if (element && !("value" in element)) {
+            if (element && element.type !== "range") {
                 element.style.setProperty("--progress", percentage + "%");
-                element.setAttribute("aria-valuenow", String(Math.round(percentage)));
+                element.setAttribute(
+                    "aria-valuenow",
+                    String(Math.round(percentage))
+                );
             }
         });
 
@@ -1908,9 +1889,7 @@ const ResonaAPI = {
 
     async loadCatalogue() {
         if (!this.getBaseUrl()) {
-            console.info(
-                "Resona API is not connected. No remote catalogue loaded."
-            );
+            console.info("Resona API is not connected. No remote catalogue loaded.");
             return false;
         }
 
@@ -1923,19 +1902,19 @@ const ResonaAPI = {
                 ? response
                 : Array.isArray(response.tracks)
                     ? response.tracks
-                    : [];
+                    : Array.isArray(response.data?.tracks)
+                        ? response.data.tracks
+                        : [];
 
-            ResonaState.tracks =
-                ResonaCatalogue.normalizeTracks(rawTracks);
-
+            ResonaState.tracks = ResonaCatalogue.normalizeTracks(rawTracks);
             ResonaState.isLoading = false;
+
             return true;
         } catch (error) {
             ResonaState.isLoading = false;
-
             console.error("Could not load Resona catalogue:", error);
-
             ResonaToast.show("Music catalogue could not be loaded.");
+
             return false;
         }
     }
@@ -1943,37 +1922,135 @@ const ResonaAPI = {
 
 
 /* =========================================================
-   19. EVENTS
+   19. IMPROVED EVENT HANDLING
    ========================================================= */
 
 const ResonaEvents = {
     bound: false,
 
+    getElement(target) {
+        if (target instanceof Element) return target;
+        return target?.parentElement || null;
+    },
+
     bind() {
         if (this.bound) return;
         this.bound = true;
 
-        /*
-         * Main navigation:
-         * The replacement index.html uses data-page attributes.
-         * This listener is delegated, so it also works after rendering.
-         */
         document.addEventListener("click", event => {
-            const pageButton = event.target.closest("[data-page]");
+            const origin = this.getElement(event.target);
+            if (!origin) return;
 
-            if (pageButton) {
-                event.preventDefault();
+            /*
+             * PLAYER BUTTONS ARE HANDLED FIRST.
+             * This prevents mini-player buttons from opening Now Playing.
+             */
 
-                ResonaNavigation.show(
-                    pageButton.dataset.page,
-                    pageButton
-                );
+            const playerButton = origin.closest(
+                "#miniPlay, #npPlay, #npPrev, #npNext, #npClose, #npMore, #npLike, #miniLike"
+            );
 
-                return;
+            if (playerButton) {
+                const id = playerButton.id;
+
+                if (id === "miniPlay" || id === "npPlay") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    ResonaPlayer.toggle();
+                    return;
+                }
+
+                if (id === "npPrev") {
+                    event.preventDefault();
+                    ResonaPlayer.previous();
+                    return;
+                }
+
+                if (id === "npNext") {
+                    event.preventDefault();
+                    ResonaPlayer.next();
+                    return;
+                }
+
+                if (id === "npClose") {
+                    event.preventDefault();
+                    ResonaNowPlaying.close();
+                    return;
+                }
+
+                if (id === "npMore") {
+                    event.preventDefault();
+                    ResonaToast.show("Additional player options are coming next.");
+                    return;
+                }
+
+                if (id === "npLike" || id === "miniLike") {
+                    event.preventDefault();
+
+                    if (ResonaState.currentTrack) {
+                        this.toggleLike(ResonaState.currentTrack.id);
+                    }
+
+                    return;
+                }
             }
 
-            const button = event.target.closest("[data-action]");
+            /*
+             * Navigation supports several HTML attribute conventions.
+             */
 
+            const navigationElement = origin.closest([
+                "[data-page]",
+                "[data-page-target]",
+                "[data-navigate]",
+                "[data-nav]",
+                "[data-route]",
+                "[data-href]",
+                "[data-target]",
+                "a[href^='#']",
+                "a[href^='/']"
+            ].join(","));
+
+            if (navigationElement) {
+                const destination =
+                    ResonaNavigation.resolveDestination(navigationElement);
+
+                if (destination) {
+                    event.preventDefault();
+
+                    ResonaNavigation.show(
+                        destination,
+                        navigationElement
+                    );
+
+                    return;
+                }
+            }
+
+            /*
+             * Open Now Playing only when the mini-player background,
+             * artwork, title, or artist is clicked.
+             */
+
+            const miniContent = origin.closest(
+                "#mini, #miniArt, #miniTitle, #miniArtist"
+            );
+
+            if (miniContent && ResonaState.currentTrack) {
+                const clickedButton = origin.closest("button");
+
+                if (!clickedButton) {
+                    event.preventDefault();
+                    ResonaNowPlaying.open();
+                    return;
+                }
+            }
+
+            /*
+             * Application actions.
+             */
+
+            const button = origin.closest("[data-action]");
             if (!button) return;
 
             const action = button.dataset.action;
@@ -2036,67 +2113,48 @@ const ResonaEvents = {
         });
 
         /*
-         * Player controls from the current index.html.
+         * Progress controls.
          */
-        document.addEventListener("click", event => {
-            const control = event.target.closest(
-                "#miniPlay, #npPlay, #npPrev, #npNext, #npClose, #npMore, #mini, #miniArt, #miniTitle, #miniArtist"
-            );
-
-            if (!control) return;
-
-            const id = control.id;
-
-            if (id === "miniPlay" || id === "npPlay") {
-                event.preventDefault();
-                event.stopPropagation();
-                ResonaPlayer.toggle();
-                return;
-            }
-
-            if (id === "npPrev") {
-                event.preventDefault();
-                ResonaPlayer.previous();
-                return;
-            }
-
-            if (id === "npNext") {
-                event.preventDefault();
-                ResonaPlayer.next();
-                return;
-            }
-
-            if (id === "npClose") {
-                event.preventDefault();
-                ResonaNowPlaying.close();
-                return;
-            }
-
-            if (id === "npMore") {
-                event.preventDefault();
-                ResonaToast.show("Additional player options are coming next.");
-                return;
-            }
-
-            if (
-                ["mini", "miniArt", "miniTitle", "miniArtist"].includes(id) &&
-                ResonaState.currentTrack
-            ) {
-                ResonaNowPlaying.open();
-            }
-        });
 
         document.addEventListener("input", event => {
-            const target = event.target;
+            const target = this.getElement(event.target);
+            if (!target) return;
 
             if (
                 target.matches("#seekBar") ||
                 target.matches("#miniProgressTrack") ||
                 target.matches("#npProgressTrack")
             ) {
-                ResonaPlayer.seek(target.value);
+                if ("value" in target) {
+                    ResonaPlayer.seek(target.value);
+                }
             }
         });
+
+        document.addEventListener("click", event => {
+            const origin = this.getElement(event.target);
+            if (!origin) return;
+
+            const progress = origin.closest(
+                "#miniProgressTrack, #npProgressTrack"
+            );
+
+            if (!progress || progress.type === "range") return;
+
+            ResonaPlayer.seekFromElement(progress, event);
+        });
+
+        /*
+         * Browser back and forward.
+         */
+
+        window.addEventListener("popstate", event => {
+            ResonaNavigation.handlePopState(event);
+        });
+
+        /*
+         * Escape closes Now Playing.
+         */
 
         document.addEventListener("keydown", event => {
             if (
@@ -2120,7 +2178,6 @@ const ResonaEvents = {
         );
 
         ResonaPlayer.updatePlayerUI();
-
         ResonaNavigation.renderPage(ResonaState.currentPage);
     }
 };
@@ -2433,7 +2490,9 @@ function installResonaSupportStyles() {
         .empty-icon { font-size:28px; margin-bottom:8px; }
         .full { width:100%; }
 
-        .page[aria-hidden="true"] { pointer-events:none; }
+        .page[aria-hidden="true"] {
+            pointer-events:none;
+        }
 
         #np[aria-hidden="true"] {
             visibility:hidden;
@@ -2483,12 +2542,14 @@ async function initResona() {
     await ResonaAPI.loadCatalogue();
 
     const savedPage = ResonaUtils.readStorage("last_page", "home");
+    const hashPage = ResonaNavigation.normalizePage(window.location.hash);
 
-    const initialPage = ResonaNavigation.pages.includes(savedPage)
-        ? savedPage
-        : "home";
+    const initialPage =
+        hashPage ||
+        ResonaNavigation.normalizePage(savedPage) ||
+        "home";
 
-    ResonaNavigation.show(initialPage);
+    ResonaNavigation.show(initialPage, null, { history: false });
 
     const mini = ResonaUtils.$("#mini");
 
@@ -2543,11 +2604,7 @@ window.ResonaExplore = ResonaExplore;
    ========================================================= */
 
 if (document.readyState === "loading") {
-    document.addEventListener(
-        "DOMContentLoaded",
-        initResona,
-        { once: true }
-    );
+    document.addEventListener("DOMContentLoaded", initResona, { once: true });
 } else {
     initResona();
    }
